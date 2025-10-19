@@ -1,0 +1,31 @@
+{
+  "marital_mapping": {
+    "Alone": "Single",
+    "YOLO": "Single",
+    "Absurd": "Other"
+  },
+  "education_mapping": {
+    "order": [
+      "Basic",
+      "2n Cycle",
+      "Graduation",
+      "Master",
+      "PhD"
+    ],
+    "column": "Education_ord"
+  },
+  "marital_status_encoding": {
+    "dummy_columns": [
+      "Marital_Divorced",
+      "Marital_Married",
+      "Marital_Other",
+      "Marital_Single",
+      "Marital_Together",
+      "Marital_Widow"
+    ],
+    "rare_categories": [
+      "Other"
+    ],
+    "grouped_column": "Marital_Status_Grouped"
+  }
+}

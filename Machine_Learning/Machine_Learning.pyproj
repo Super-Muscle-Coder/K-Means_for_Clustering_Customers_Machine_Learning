@@ -1,0 +1,137 @@
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003" ToolsVersion="4.0">
+  <PropertyGroup>
+    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+    <SchemaVersion>2.0</SchemaVersion>
+    <ProjectGuid>70d1f63c-5922-4470-8359-9596058f959a</ProjectGuid>
+    <ProjectHome>.</ProjectHome>
+    <StartupFile>src\AfterEachStage_src\after_1S.py</StartupFile>
+    <SearchPath>
+    </SearchPath>
+    <WorkingDirectory>.</WorkingDirectory>
+    <OutputPath>.</OutputPath>
+    <Name>Machine_Learning</Name>
+    <RootNamespace>Machine_Learning</RootNamespace>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)' == 'Debug' ">
+    <DebugSymbols>true</DebugSymbols>
+    <EnableUnmanagedDebugging>false</EnableUnmanagedDebugging>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)' == 'Release' ">
+    <DebugSymbols>true</DebugSymbols>
+    <EnableUnmanagedDebugging>false</EnableUnmanagedDebugging>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="src\AfterEachStage_src\after_1S.py" />
+    <Compile Include="src\AfterEachStage_src\after_3S.py" />
+    <Compile Include="src\Data Preparation\Data Processing &amp; Wrangling_src\Basic_Data_Analysis.py" />
+    <Compile Include="src\Data Preparation\Data Processing &amp; Wrangling_src\Data_Cleaning.py" />
+    <Compile Include="src\Data Preparation\Data Processing &amp; Wrangling_src\duplicated_value.py" />
+    <Compile Include="src\AfterEachStage_src\after_2S.py" />
+    <Compile Include="src\Data Preparation\Feature Extraction &amp; Engineering_src\Feature_Engineering.py" />
+    <Compile Include="src\Data Preparation\Feature Scaling &amp; Selection_src\Feature_Scaling.py" />
+  </ItemGroup>
+  <ItemGroup>
+    <Folder Include="dataset\" />
+    <Folder Include="graph\" />
+    <Folder Include="graph\Data Processing &amp; Wrangling_graph\" />
+    <Folder Include="graph\Data Processing &amp; Wrangling_graph\Basic_Data_Analysis\" />
+    <Folder Include="graph\Data Processing &amp; Wrangling_graph\Data_Cleaning\" />
+    <Folder Include="Graph\AfterEachStage_graph\after_3S_graph\" />
+    <Folder Include="Graph\AfterEachStage_graph\after_2S_graph\" />
+    <Folder Include="Graph\AfterEachStage_graph\after_1S_graph\" />
+    <Folder Include="graph\Feature Extraction &amp; Engineering_graph\" />
+    <Folder Include="graph\Feature Scaling &amp; Selection_graph\" />
+    <Folder Include="Graph\AfterEachStage_graph\" />
+    <Folder Include="report\" />
+    <Folder Include="report\AfterEachStage_report\" />
+    <Folder Include="report\Feature Extraction &amp; Engineering_report\" />
+    <Folder Include="report\Feature Scaling &amp; Selection_report\" />
+    <Folder Include="report\Data Processing &amp; Wrangling_report\" />
+    <Folder Include="src\" />
+    <Folder Include="src\Data Preparation\" />
+    <Folder Include="src\Data Preparation\Data Processing &amp; Wrangling_src\" />
+    <Folder Include="src\Data Preparation\Feature Extraction &amp; Engineering_src\" />
+    <Folder Include="src\Data Preparation\Feature Scaling &amp; Selection_src\" />
+    <Folder Include="src\AfterEachStage_src\" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="dataset\Customer_Behavior.csv" />
+    <Content Include="dataset\Customer_Behavior_cleaned.csv" />
+    <Content Include="graph\AfterEachStage_graph\after_1S_graph\1_dataset_size_comparison.png" />
+    <Content Include="graph\AfterEachStage_graph\after_1S_graph\2_dtype_comparison.png" />
+    <Content Include="graph\AfterEachStage_graph\after_1S_graph\3_missing_values_comparison.png" />
+    <Content Include="graph\AfterEachStage_graph\after_1S_graph\4_duplicates_detailed_analysis.png" />
+    <Content Include="graph\AfterEachStage_graph\after_1S_graph\5_01_outlier_income.png" />
+    <Content Include="graph\AfterEachStage_graph\after_1S_graph\5_02_outlier_year-birth.png" />
+    <Content Include="graph\AfterEachStage_graph\after_1S_graph\5_03_outlier_mntmeatproducts.png" />
+    <Content Include="graph\AfterEachStage_graph\after_1S_graph\5_04_outlier_mntfruits.png" />
+    <Content Include="graph\AfterEachStage_graph\after_1S_graph\5_05_outlier_mntsweetproducts.png" />
+    <Content Include="graph\AfterEachStage_graph\after_1S_graph\5_06_outlier_mntgoldprods.png" />
+    <Content Include="graph\AfterEachStage_graph\after_1S_graph\5_07_outlier_mntfishproducts.png" />
+    <Content Include="graph\AfterEachStage_graph\after_1S_graph\5_08_outlier_numwebpurchases.png" />
+    <Content Include="graph\AfterEachStage_graph\after_1S_graph\5_09_outlier_numcatalogpurchases.png" />
+    <Content Include="graph\AfterEachStage_graph\after_1S_graph\5_10_outlier_numdealspurchases.png" />
+    <Content Include="graph\AfterEachStage_graph\after_1S_graph\5_11_outlier_numwebvisitsmonth.png" />
+    <Content Include="graph\AfterEachStage_graph\after_1S_graph\5_marital_status_standardization.png" />
+    <Content Include="graph\AfterEachStage_graph\after_1S_graph\6_education_ordinal_encoding.png" />
+    <Content Include="graph\AfterEachStage_graph\after_1S_graph\7_onehot_encoding_marital.png" />
+    <Content Include="graph\AfterEachStage_graph\after_1S_graph\8_summary_improvement.png" />
+    <Content Include="Graph\AfterEachStage_graph\after_2S_graph\age_analysis.png" />
+    <Content Include="Graph\AfterEachStage_graph\after_2S_graph\correlation_heatmap.png" />
+    <Content Include="Graph\AfterEachStage_graph\after_2S_graph\spending_by_age_groups.png" />
+    <Content Include="Graph\AfterEachStage_graph\after_2S_graph\spending_patterns.png" />
+    <Content Include="Graph\AfterEachStage_graph\after_2S_graph\spending_transformation_comparison.png" />
+    <Content Include="graph\Data Processing &amp; Wrangling_graph\Basic_Data_Analysis\binary_outliers_AcceptedCmp1.png" />
+    <Content Include="graph\Data Processing &amp; Wrangling_graph\Basic_Data_Analysis\binary_outliers_AcceptedCmp2.png" />
+    <Content Include="graph\Data Processing &amp; Wrangling_graph\Basic_Data_Analysis\binary_outliers_AcceptedCmp3.png" />
+    <Content Include="graph\Data Processing &amp; Wrangling_graph\Basic_Data_Analysis\binary_outliers_AcceptedCmp4.png" />
+    <Content Include="graph\Data Processing &amp; Wrangling_graph\Basic_Data_Analysis\binary_outliers_AcceptedCmp5.png" />
+    <Content Include="graph\Data Processing &amp; Wrangling_graph\Basic_Data_Analysis\binary_outliers_Complain.png" />
+    <Content Include="graph\Data Processing &amp; Wrangling_graph\Basic_Data_Analysis\binary_outliers_Response.png" />
+    <Content Include="graph\Data Processing &amp; Wrangling_graph\Basic_Data_Analysis\constant_variable_Z_CostContact.png" />
+    <Content Include="graph\Data Processing &amp; Wrangling_graph\Basic_Data_Analysis\constant_variable_Z_Revenue.png" />
+    <Content Include="graph\Data Processing &amp; Wrangling_graph\Basic_Data_Analysis\count_outliers_Kidhome.png" />
+    <Content Include="graph\Data Processing &amp; Wrangling_graph\Basic_Data_Analysis\count_outliers_NumCatalogPurchases.png" />
+    <Content Include="graph\Data Processing &amp; Wrangling_graph\Basic_Data_Analysis\count_outliers_NumDealsPurchases.png" />
+    <Content Include="graph\Data Processing &amp; Wrangling_graph\Basic_Data_Analysis\count_outliers_NumStorePurchases.png" />
+    <Content Include="graph\Data Processing &amp; Wrangling_graph\Basic_Data_Analysis\count_outliers_NumWebPurchases.png" />
+    <Content Include="graph\Data Processing &amp; Wrangling_graph\Basic_Data_Analysis\count_outliers_NumWebVisitsMonth.png" />
+    <Content Include="graph\Data Processing &amp; Wrangling_graph\Basic_Data_Analysis\count_outliers_Recency.png" />
+    <Content Include="graph\Data Processing &amp; Wrangling_graph\Basic_Data_Analysis\count_outliers_Teenhome.png" />
+    <Content Include="graph\Data Processing &amp; Wrangling_graph\Basic_Data_Analysis\income_outliers_Income.png" />
+    <Content Include="graph\Data Processing &amp; Wrangling_graph\Basic_Data_Analysis\special_outliers_Year_Birth.png" />
+    <Content Include="graph\Data Processing &amp; Wrangling_graph\Basic_Data_Analysis\spending_outliers_MntFishProducts.png" />
+    <Content Include="graph\Data Processing &amp; Wrangling_graph\Basic_Data_Analysis\spending_outliers_MntFruits.png" />
+    <Content Include="graph\Data Processing &amp; Wrangling_graph\Basic_Data_Analysis\spending_outliers_MntGoldProds.png" />
+    <Content Include="graph\Data Processing &amp; Wrangling_graph\Basic_Data_Analysis\spending_outliers_MntMeatProducts.png" />
+    <Content Include="graph\Data Processing &amp; Wrangling_graph\Basic_Data_Analysis\spending_outliers_MntSweetProducts.png" />
+    <Content Include="graph\Data Processing &amp; Wrangling_graph\Basic_Data_Analysis\spending_outliers_MntWines.png" />
+    <Content Include="graph\Data Processing &amp; Wrangling_graph\Data_Cleaning\duplicate_removal_analysis.png" />
+    <Content Include="graph\Data Processing &amp; Wrangling_graph\Data_Cleaning\missing_values_analysis.png" />
+    <Content Include="graph\Data Processing &amp; Wrangling_graph\Data_Cleaning\outlier_removal_Income.png" />
+    <Content Include="graph\Data Processing &amp; Wrangling_graph\Data_Cleaning\outlier_removal_MntFishProducts.png" />
+    <Content Include="graph\Data Processing &amp; Wrangling_graph\Data_Cleaning\outlier_removal_MntFruits.png" />
+    <Content Include="graph\Data Processing &amp; Wrangling_graph\Data_Cleaning\outlier_removal_MntGoldProds.png" />
+    <Content Include="graph\Data Processing &amp; Wrangling_graph\Data_Cleaning\outlier_removal_MntMeatProducts.png" />
+    <Content Include="graph\Data Processing &amp; Wrangling_graph\Data_Cleaning\outlier_removal_MntSweetProducts.png" />
+    <Content Include="graph\Data Processing &amp; Wrangling_graph\Data_Cleaning\outlier_removal_NumCatalogPurchases.png" />
+    <Content Include="graph\Data Processing &amp; Wrangling_graph\Data_Cleaning\outlier_removal_NumDealsPurchases.png" />
+    <Content Include="graph\Data Processing &amp; Wrangling_graph\Data_Cleaning\outlier_removal_NumWebPurchases.png" />
+    <Content Include="graph\Data Processing &amp; Wrangling_graph\Data_Cleaning\outlier_removal_NumWebVisitsMonth.png" />
+    <Content Include="graph\Data Processing &amp; Wrangling_graph\Data_Cleaning\outlier_removal_Year_Birth.png" />
+    <Content Include="report\Data Processing &amp; Wrangling_report\Basic_Data_Analysic_report.txt" />
+    <Content Include="report\Data Processing &amp; Wrangling_report\Data_Cleaning_report.txt" />
+    <Content Include="report\Data Processing &amp; Wrangling_report\duplicated_value.txt" />
+    <Content Include="src\AfterEach" />
+    <Content Include="report\AfterEachStage_report\Stage1_Comparison_Report.txt" />
+  </ItemGroup>
+  <Import Project="$(MSBuildExtensionsPath32)\Microsoft\VisualStudio\v$(VisualStudioVersion)\Python Tools\Microsoft.PythonTools.targets" />
+  <!-- Uncomment the CoreCompile target to enable the Build command in
+       Visual Studio and specify your pre- and post-build commands in
+       the BeforeBuild and AfterBuild targets below. -->
+  <!--<Target Name="CoreCompile" />-->
+  <Target Name="BeforeBuild">
+  </Target>
+  <Target Name="AfterBuild">
+  </Target>
+</Project>
