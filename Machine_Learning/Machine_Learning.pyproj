@@ -4,13 +4,14 @@
     <SchemaVersion>2.0</SchemaVersion>
     <ProjectGuid>70d1f63c-5922-4470-8359-9596058f959a</ProjectGuid>
     <ProjectHome>.</ProjectHome>
-    <StartupFile>src\AfterEachStage_src\after_1S.py</StartupFile>
+    <StartupFile>src\Training\KMeans_RFM.py</StartupFile>
     <SearchPath>
     </SearchPath>
     <WorkingDirectory>.</WorkingDirectory>
     <OutputPath>.</OutputPath>
     <Name>Machine_Learning</Name>
     <RootNamespace>Machine_Learning</RootNamespace>
+    <SuppressConfigureTestFrameworkPrompt>true</SuppressConfigureTestFrameworkPrompt>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)' == 'Debug' ">
     <DebugSymbols>true</DebugSymbols>
@@ -23,12 +24,15 @@
   <ItemGroup>
     <Compile Include="src\AfterEachStage_src\after_1S.py" />
     <Compile Include="src\AfterEachStage_src\after_3S.py" />
+    <Compile Include="src\AfterEachStage_src\after_2S.py" />
     <Compile Include="src\Data Preparation\Data Processing &amp; Wrangling_src\Basic_Data_Analysis.py" />
     <Compile Include="src\Data Preparation\Data Processing &amp; Wrangling_src\Data_Cleaning.py" />
     <Compile Include="src\Data Preparation\Data Processing &amp; Wrangling_src\duplicated_value.py" />
-    <Compile Include="src\AfterEachStage_src\after_2S.py" />
     <Compile Include="src\Data Preparation\Feature Extraction &amp; Engineering_src\Feature_Engineering.py" />
     <Compile Include="src\Data Preparation\Feature Scaling &amp; Selection_src\Feature_Scaling.py" />
+    <Compile Include="src\Training\KMeans_Demographic.py" />
+    <Compile Include="src\Training\KMeans_ProductChannel.py" />
+    <Compile Include="src\Training\KMeans_RFM.py" />
   </ItemGroup>
   <ItemGroup>
     <Folder Include="dataset\" />
@@ -42,21 +46,36 @@
     <Folder Include="graph\Feature Extraction &amp; Engineering_graph\" />
     <Folder Include="graph\Feature Scaling &amp; Selection_graph\" />
     <Folder Include="Graph\AfterEachStage_graph\" />
+    <Folder Include="graph\Training\" />
+    <Folder Include="graph\Training\Demographic\" />
+    <Folder Include="graph\Training\RFM\" />
+    <Folder Include="graph\Training\ProductChannel\" />
     <Folder Include="report\" />
     <Folder Include="report\AfterEachStage_report\" />
     <Folder Include="report\Feature Extraction &amp; Engineering_report\" />
     <Folder Include="report\Feature Scaling &amp; Selection_report\" />
     <Folder Include="report\Data Processing &amp; Wrangling_report\" />
+    <Folder Include="report\Traning\" />
     <Folder Include="src\" />
     <Folder Include="src\Data Preparation\" />
     <Folder Include="src\Data Preparation\Data Processing &amp; Wrangling_src\" />
     <Folder Include="src\Data Preparation\Feature Extraction &amp; Engineering_src\" />
     <Folder Include="src\Data Preparation\Feature Scaling &amp; Selection_src\" />
     <Folder Include="src\AfterEachStage_src\" />
+    <Folder Include="src\Training\" />
   </ItemGroup>
   <ItemGroup>
     <Content Include="dataset\Customer_Behavior.csv" />
     <Content Include="dataset\Customer_Behavior_cleaned.csv" />
+    <Content Include="dataset\Customer_Behavior_Demographic.csv" />
+    <Content Include="dataset\Customer_Behavior_Demographic_robust_scaled.csv" />
+    <Content Include="dataset\Customer_Behavior_Demographic_scaled.csv" />
+    <Content Include="dataset\Customer_Behavior_ProductChannel.csv" />
+    <Content Include="dataset\Customer_Behavior_ProductChannel_robust_scaled.csv" />
+    <Content Include="dataset\Customer_Behavior_ProductChannel_scaled.csv" />
+    <Content Include="dataset\Customer_Behavior_RFM.csv" />
+    <Content Include="dataset\Customer_Behavior_RFM_robust_scaled.csv" />
+    <Content Include="dataset\Customer_Behavior_RFM_scaled.csv" />
     <Content Include="graph\AfterEachStage_graph\after_1S_graph\1_dataset_size_comparison.png" />
     <Content Include="graph\AfterEachStage_graph\after_1S_graph\2_dtype_comparison.png" />
     <Content Include="graph\AfterEachStage_graph\after_1S_graph\3_missing_values_comparison.png" />
@@ -76,11 +95,6 @@
     <Content Include="graph\AfterEachStage_graph\after_1S_graph\6_education_ordinal_encoding.png" />
     <Content Include="graph\AfterEachStage_graph\after_1S_graph\7_onehot_encoding_marital.png" />
     <Content Include="graph\AfterEachStage_graph\after_1S_graph\8_summary_improvement.png" />
-    <Content Include="Graph\AfterEachStage_graph\after_2S_graph\age_analysis.png" />
-    <Content Include="Graph\AfterEachStage_graph\after_2S_graph\correlation_heatmap.png" />
-    <Content Include="Graph\AfterEachStage_graph\after_2S_graph\spending_by_age_groups.png" />
-    <Content Include="Graph\AfterEachStage_graph\after_2S_graph\spending_patterns.png" />
-    <Content Include="Graph\AfterEachStage_graph\after_2S_graph\spending_transformation_comparison.png" />
     <Content Include="graph\Data Processing &amp; Wrangling_graph\Basic_Data_Analysis\binary_outliers_AcceptedCmp1.png" />
     <Content Include="graph\Data Processing &amp; Wrangling_graph\Basic_Data_Analysis\binary_outliers_AcceptedCmp2.png" />
     <Content Include="graph\Data Processing &amp; Wrangling_graph\Basic_Data_Analysis\binary_outliers_AcceptedCmp3.png" />
@@ -119,11 +133,14 @@
     <Content Include="graph\Data Processing &amp; Wrangling_graph\Data_Cleaning\outlier_removal_NumWebPurchases.png" />
     <Content Include="graph\Data Processing &amp; Wrangling_graph\Data_Cleaning\outlier_removal_NumWebVisitsMonth.png" />
     <Content Include="graph\Data Processing &amp; Wrangling_graph\Data_Cleaning\outlier_removal_Year_Birth.png" />
-    <Content Include="report\Data Processing &amp; Wrangling_report\Basic_Data_Analysic_report.txt" />
-    <Content Include="report\Data Processing &amp; Wrangling_report\Data_Cleaning_report.txt" />
+    <Content Include="report\AfterEachStage_report\Stage1_Comparison_Report.log" />
+    <Content Include="report\Data Processing &amp; Wrangling_report\Basic_Data_Analysic_report.log" />
+    <Content Include="report\Data Processing &amp; Wrangling_report\Data_Cleaning_report.log" />
     <Content Include="report\Data Processing &amp; Wrangling_report\duplicated_value.txt" />
-    <Content Include="src\AfterEach" />
-    <Content Include="report\AfterEachStage_report\Stage1_Comparison_Report.txt" />
+    <Content Include="report\Feature Extraction &amp; Engineering_report\Check_Quanlity.txt" />
+    <Content Include="report\Feature Extraction &amp; Engineering_report\Demographic_Engineering_Report.log" />
+    <Content Include="report\Feature Extraction &amp; Engineering_report\ProductChannel_Engineering_Report.log" />
+    <Content Include="report\Feature Extraction &amp; Engineering_report\RFM_Engineering_Report.log" />
   </ItemGroup>
   <Import Project="$(MSBuildExtensionsPath32)\Microsoft\VisualStudio\v$(VisualStudioVersion)\Python Tools\Microsoft.PythonTools.targets" />
   <!-- Uncomment the CoreCompile target to enable the Build command in

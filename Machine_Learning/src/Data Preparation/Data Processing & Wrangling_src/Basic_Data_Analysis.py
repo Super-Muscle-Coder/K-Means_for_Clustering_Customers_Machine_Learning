@@ -74,7 +74,7 @@ class DataProcessingWrangling:
 
         os.makedirs(output_dir, exist_ok=True)
 
-        report_file = os.path.join(output_dir, f"Basic_Data_Analysic_report.txt")
+        report_file = os.path.join(output_dir, f"Basic_Data_Analysic_report.log")
 
         try:
             with open(report_file, 'w', encoding='utf-8') as f:
@@ -1763,7 +1763,7 @@ KẾT QUẢ PHÂN TÍCH:
         
         print(f"\nHIỆU SUẤT XỬ LÝ:")
         print(f"    Thời gian xử lý        : {elapsed_time:.2f} giây")
-        print(f"    Tốc độ xử lý           : {total_rows / elapsed_time:.0f} dòng/giây" if elapsed_time > 0 else "   🚀 Tốc độ xử lý       : N/A")
+        print(f"    Tốc độ xử lý           : {total_rows / elapsed_time:.0f} dòng/giây" if elapsed_time > 0 else "   Tốc độ xử lý       : N/A")
         print(f"    Bộ nhớ sử dụng         : {self.dataset.memory_usage(deep=True).sum() / 1024 / 1024:.2f} MB")
         
         # ==========================================

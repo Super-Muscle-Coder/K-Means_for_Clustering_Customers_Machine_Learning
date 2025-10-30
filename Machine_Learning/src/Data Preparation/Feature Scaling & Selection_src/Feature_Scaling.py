@@ -1,973 +1,1166 @@
-﻿import pandas as pd
+﻿"""
+================================================================================
+FEATURE SCALING FOR MULTI-OBJECTIVE CUSTOMER CLUSTERING
+================================================================================
+
+Module: Feature Scaling cho 3 chiến lược clustering
+- Class 1: DemographicScaler (Life Stage Segmentation)
+- Class 2: ProductChannelScaler (Shopping Behavior Segmentation)
+- Class 3: RFMScaler (Customer Value Segmentation)
+
+Scaling Method: StandardScaler (Z-score normalization)
+Additional option: RobustScaler (median / IQR) to reduce outlier impact
+
+Input:  3 engineered datasets (CSV)
+Output: 3 scaled datasets (CSV) (+ optional robust-scaled CSVs) + 3 reports (LOG format)
+
+================================================================================
+"""
+
+import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
-import seaborn as sns
+from datetime import datetime
+from sklearn.preprocessing import StandardScaler, RobustScaler
 import os
-import time
 import warnings
-from sklearn.preprocessing import StandardScaler, MinMaxScaler, RobustScaler
-from sklearn.decomposition import PCA
-from sklearn.feature_selection import VarianceThreshold, SelectKBest, f_classif
-from sklearn.ensemble import RandomForestClassifier
-from statsmodels.stats.outliers_influence import variance_inflation_factor
+import joblib
 
 warnings.filterwarnings('ignore')
 
-class FeatureScalingSelection:
-    """
-    Class thực hiện các bước của Feature Scaling & Selection trong quá trình Data Preparation.
-    
-    Quy trình tối ưu:
-    1. Phân tích dữ liệu và tương quan
-    2. Chọn một phương pháp scaling phù hợp nhất
-    3. Loại bỏ multicollinearity
-    4. Chọn lọc đặc trưng quan trọng
-    5. Xuất dataset đã xử lý
-    """
 
-    def __init__(self, dataset_path):
+# ================================================================================
+# CLASS 1: DEMOGRAPHIC SCALER
+# ================================================================================
+
+class DemographicScaler:
+    """
+    Feature Scaling cho Phân Cụm Nhân Khẩu Học (Demographic Clustering)
+
+    New optional args:
+      - use_robust (bool): nếu True sẽ tạo thêm dataset sử dụng RobustScaler
+      - robust_columns (list[str] | None): danh sách cột áp dụng RobustScaler (None -> tất cả numeric)
+
+    Outputs when use_robust=True:
+      - Customer_Behavior_Demographic_robust_scaled.csv
+      - demographic_robust_scaler.pkl
+    """
+    
+    def __init__(self, input_path, output_dir, report_dir, use_robust=False, robust_columns=None):
         """
-        Khởi tạo lớp FeatureScalingSelection với đường dẫn đến tập dữ liệu.
+        Khởi tạo Demographic Scaler.
         """
-        self.dataset_path = dataset_path
-        self.dataset = None
-        self.processed_dataset = None
+        self.input_path = input_path
+        self.output_dir = output_dir
+        self.report_dir = report_dir
+        self.use_robust = use_robust
+        self.robust_columns = robust_columns
+        
+        # Create directories
+        os.makedirs(output_dir, exist_ok=True)
+        os.makedirs(report_dir, exist_ok=True)
+        
+        # Output paths
+        self.output_csv = os.path.join(output_dir, "Customer_Behavior_Demographic_scaled.csv")
+        self.report_file = os.path.join(report_dir, "Demographic_Scaling_Report.log")
+        self.scaler_file = os.path.join(output_dir, "demographic_scaler.pkl")
+        # Robust outputs
+        self.robust_output_csv = os.path.join(output_dir, "Customer_Behavior_Demographic_robust_scaled.csv")
+        self.robust_scaler_file = os.path.join(output_dir, "demographic_robust_scaler.pkl")
+        
+        # Data storage
+        self.df = None
+        self.df_scaled = None
+        self.df_robust_scaled = None
+        self.scaler = StandardScaler()
+        self.robust_scaler = None
+        self.pre_stats = {}
+        self.post_stats = {}
         self.processing_log = []
-        self.original_shape = None
-        self.numerical_columns = []
-        self.categorical_columns = []
-        self.scaling_method = None  # Phương pháp scaling được chọn
-        self.scaler = None  # Đối tượng scaler
     
     def log_action(self, action, details=""):
-        """
-        Ghi lại các hành động và chi tiết trong quá trình xử lý.
-        """
+        """Ghi log hành động."""
         self.processing_log.append({
+            'timestamp': datetime.now().strftime('%H:%M:%S'),
             'action': action,
-            'details': details,
-            'timestamp': pd.Timestamp.now()
+            'details': details
         })
-
-    # =======================================================================================================================
-    # HÀM LOAD DATASET
+    
+    def _print_header(self, title, width=100, char='='):
+        print(char * width)
+        print(f"{title:^{width}}")
+        print(char * width)
+        print()
+    
+    # STEP 1: LOAD DATA
     def load_data(self):
-        """
-        Load tập dữ liệu từ đường dẫn đã cung cấp.
-        """
+        self._print_header("DEMOGRAPHIC SCALING - LOAD DATA")
         try:
-            print("="*100)
-            print("Bước 1: TẢI VÀ ĐỌC DỮ LIỆU")
+            self.df = pd.read_csv(self.input_path)
+            print(f"Loaded dataset successfully")
+            print(f"   Path: {self.input_path}")
+            print(f"   Shape: {self.df.shape[0]:,} rows x {self.df.shape[1]} columns")
+            print(f"   Memory: {self.df.memory_usage(deep=True).sum() / 1024:.2f} KB")
             print()
-
-            self.dataset = pd.read_csv(self.dataset_path)
-            self.original_shape = self.dataset.shape
-            
-            # Xác định các cột số và cột phân loại
-            self.numerical_columns = self.dataset.select_dtypes(include=['int64', 'float64']).columns.tolist()
-            self.categorical_columns = self.dataset.select_dtypes(include=['object', 'category']).columns.tolist()
-            
-            # Loại bỏ cột datetime nếu có
-            datetime_cols = self.dataset.select_dtypes(include=['datetime64']).columns.tolist()
-            if datetime_cols:
-                print(f"Phát hiện {len(datetime_cols)} cột datetime: {datetime_cols}")
-                print("Các cột này sẽ được loại trừ khỏi quá trình scaling.")
-            
-            print(f"Dữ liệu đã được tải thành công: {self.dataset.shape[0]:,} dòng × {self.dataset.shape[1]} cột")
-            print(f"- Cột số: {len(self.numerical_columns)}")
-            print(f"- Cột phân loại: {len(self.categorical_columns)}")
-            print(f"- Cột datetime: {len(datetime_cols)}")
+            print(f"Features loaded:")
+            for i, col in enumerate(self.df.columns, 1):
+                print(f"   {i}. {col:<40} ({self.df[col].dtype})")
             print()
-            
-            self.log_action("Tải dữ liệu thành công", f"Dataset shape: {self.dataset.shape}")
-            
-            # Khởi tạo processed dataset
-            self.processed_dataset = self.dataset.copy()
-            
-            return self.dataset
-
+            self.log_action("Load data", f"Shape: {self.df.shape}")
+            return True
         except Exception as e:
-            print(f"Lỗi khi tải dữ liệu: {e}")
-            return None
-
-    # =======================================================================================================================
-    # HÀM PHÂN TÍCH TƯƠNG QUAN ĐẶC TRƯNG
-    def analyze_feature_correlation(self, correlation_threshold=0.8):
-        """
-        Phân tích tương quan giữa các đặc trưng số và hiển thị ma trận tương quan.
-        """
-        print("="*100)
-        print("Bước 2: PHÂN TÍCH TƯƠNG QUAN ĐẶC TRƯNG")
+            print(f"Error loading data: {e}")
+            self.log_action("Load data FAILED", str(e))
+            return False
+    
+    # STEP 2: VALIDATE DATA
+    def validate_data(self):
+        self._print_header("STEP 1: VALIDATE DATA QUALITY")
+        print("Pre-Scaling Data Quality Checks:")
         print()
-        
-        if len(self.numerical_columns) < 2:
-            print("Không đủ cột số để phân tích tương quan.")
-            return None
-        
-        # Tính ma trận tương quan
-        correlation_matrix = self.dataset[self.numerical_columns].corr()
-        
-        # Tìm các cặp đặc trưng có tương quan cao
-        high_correlation_pairs = []
-        for i in range(len(self.numerical_columns)):
-            for j in range(i+1, len(self.numerical_columns)):
-                corr_value = correlation_matrix.iloc[i, j]
-                if abs(corr_value) >= correlation_threshold:
-                    high_correlation_pairs.append({
-                        'feature1': self.numerical_columns[i],
-                        'feature2': self.numerical_columns[j],
-                        'correlation': corr_value
-                    })
-        
-        # Sắp xếp theo giá trị tương quan giảm dần
-        high_correlation_pairs = sorted(high_correlation_pairs, key=lambda x: abs(x['correlation']), reverse=True)
-        
-        print(f"Đã tìm thấy {len(high_correlation_pairs)} cặp đặc trưng có tương quan cao (|r| >= {correlation_threshold}):")
-        print("-" * 80)
-        for idx, pair in enumerate(high_correlation_pairs, 1):
-            print(f"{idx:2d}. {pair['feature1']} vs {pair['feature2']}: r = {pair['correlation']:.3f}")
-        print("-" * 80)
-        
-        # Tạo ma trận tương quan trực quan
-        plt.figure(figsize=(12, 10))
-        mask = np.triu(np.ones_like(correlation_matrix, dtype=bool))
-        sns.heatmap(correlation_matrix, mask=mask, annot=False, cmap='coolwarm', vmin=-1, vmax=1, linewidths=.5)
-        plt.title('Ma trận tương quan giữa các đặc trưng số')
-        
-        # Lưu biểu đồ
-        figure_dir = os.path.join(r"C:\Project\Machine_Learning\Machine_Learning\output\Scaling&Selection_report\figures")
-        os.makedirs(figure_dir, exist_ok=True)
-        correlation_heatmap_path = os.path.join(figure_dir, 'correlation_heatmap.png')
-        plt.tight_layout()
-        plt.savefig(correlation_heatmap_path)
-        plt.close()
-        
-        print(f"Đã lưu ma trận tương quan: {correlation_heatmap_path}")
-        print()
-        
-        # Ghi nhận kết quả
-        self.correlation_analysis = {
-            'high_correlation_pairs': high_correlation_pairs,
-            'correlation_matrix': correlation_matrix,
-            'correlation_threshold': correlation_threshold,
-            'correlation_heatmap_path': correlation_heatmap_path
-        }
-        
-        self.log_action("Phân tích tương quan đặc trưng", f"Đã tìm thấy {len(high_correlation_pairs)} cặp đặc trưng tương quan cao")
-        
-        return correlation_matrix, high_correlation_pairs
-
-    # =======================================================================================================================
-    # HÀM PHÂN TÍCH PHÂN PHỐI DỮ LIỆU
-    def analyze_distribution(self, n_samples=5):
-        """
-        Phân tích phân phối của dữ liệu để xác định phương pháp scaling phù hợp.
-        """
-        print("="*100)
-        print("Bước 3: PHÂN TÍCH PHÂN PHỐI DỮ LIỆU")
-        print()
-        
-        if len(self.numerical_columns) == 0:
-            print("Không có cột số để phân tích phân phối.")
-            return None
-            
-        # Chọn một số mẫu để phân tích
-        if len(self.numerical_columns) > n_samples:
-            np.random.seed(42)
-            sample_columns = np.random.choice(self.numerical_columns, n_samples, replace=False).tolist()
+        missing = self.df.isnull().sum()
+        if missing.sum() == 0:
+            print("   Missing values: None (PASS)")
         else:
-            sample_columns = self.numerical_columns
-            
-        # Tính các thông số thống kê
-        distribution_stats = {}
-        for col in self.numerical_columns:
-            data = self.dataset[col]
-            distribution_stats[col] = {
-                'mean': data.mean(),
-                'median': data.median(),
-                'std': data.std(),
-                'min': data.min(),
-                'max': data.max(),
-                'skewness': data.skew(),
-                'kurtosis': data.kurtosis(),
-                'has_outliers': abs(data.skew()) > 1 or abs(data.kurtosis()) > 3
+            print("   Missing values detected:")
+            for col in missing[missing > 0].index:
+                print(f"      {col}: {missing[col]} ({missing[col]/len(self.df)*100:.2f}%)")
+        inf_count = np.isinf(self.df.select_dtypes(include=[np.number])).sum().sum()
+        if inf_count == 0:
+            print("   Infinite values: None (PASS)")
+        else:
+            print(f"   Infinite values: {inf_count} (WARNING)")
+        non_numeric = self.df.select_dtypes(exclude=[np.number]).columns.tolist()
+        if not non_numeric:
+            print("   Data types: All numeric (PASS)")
+        else:
+            print(f"   Non-numeric columns: {non_numeric} (WARNING)")
+        print()
+        self.log_action("Validate data", "Checks completed")
+    
+    # STEP 3: PRE STATS
+    def compute_pre_stats(self):
+        self._print_header("STEP 2: PRE-SCALING STATISTICS")
+        print("Original feature statistics:")
+        print()
+        for col in self.df.columns:
+            stats = {
+                'mean': self.df[col].mean(),
+                'std': self.df[col].std(),
+                'min': self.df[col].min(),
+                'max': self.df[col].max(),
+                'median': self.df[col].median(),
+                'skewness': self.df[col].skew()
             }
-            
-        # Hiển thị thống kê
-        print("Thống kê phân phối dữ liệu:")
-        print("-" * 120)
-        print(f"{'Feature':25} | {'Mean':10} | {'Median':10} | {'Std':10} | {'Skewness':10} | {'Kurtosis':10} | {'Has Outliers'}")
-        print("-" * 120)
-        
-        for col, stats in distribution_stats.items():
-            print(f"{col:25} | {stats['mean']:10.2f} | {stats['median']:10.2f} | {stats['std']:10.2f} | {stats['skewness']:10.2f} | {stats['kurtosis']:10.2f} | {'Có' if stats['has_outliers'] else 'Không'}")
-        
-        # Đếm số cột có outliers
-        n_with_outliers = sum(1 for stats in distribution_stats.values() if stats['has_outliers'])
-        print("-" * 80)
-        print(f"Tổng số cột có phân phối lệch/outliers: {n_with_outliers}/{len(self.numerical_columns)} ({n_with_outliers/len(self.numerical_columns)*100:.1f}%)")
-        
-        # Vẽ biểu đồ phân phối cho các cột mẫu
-        fig, axes = plt.subplots(len(sample_columns), 1, figsize=(12, 4*len(sample_columns)))
-        if len(sample_columns) == 1:
-            axes = [axes]
-            
-        for i, col in enumerate(sample_columns):
-            sns.histplot(self.dataset[col], kde=True, ax=axes[i])
-            axes[i].set_title(f'Phân phối của {col} (skew={distribution_stats[col]["skewness"]:.2f}, kurt={distribution_stats[col]["kurtosis"]:.2f})')
-        
-        plt.tight_layout()
-        
-        # Lưu biểu đồ
-        figure_dir = os.path.join(r"C:\Project\Machine_Learning\Machine_Learning\output\Scaling&Selection_report\figures")
-        os.makedirs(figure_dir, exist_ok=True)
-        distribution_plot_path = os.path.join(figure_dir, 'feature_distributions.png')
-        plt.savefig(distribution_plot_path)
-        plt.close()
-        
-        print(f"\nĐã lưu biểu đồ phân phối đặc trưng: {distribution_plot_path}")
+            self.pre_stats[col] = stats
+            print(f"{col}:")
+            print(f"   Mean: {stats['mean']:>12.3f}")
+            print(f"   Std:  {stats['std']:>12.3f}")
+            print(f"   Min:  {stats['min']:>12.3f}")
+            print(f"   Max:  {stats['max']:>12.3f}")
+            print(f"   Median: {stats['median']:>10.3f}")
+            print(f"   Skewness: {stats['skewness']:>8.3f}")
+            print()
+        self.log_action("Compute pre-scaling stats", f"{len(self.df.columns)} features")
+    
+    # STEP 4: APPLY STANDARDSCALER
+    def apply_scaling(self):
+        self._print_header("STEP 3: APPLY STANDARDSCALER")
+        print("Applying Z-score normalization...")
+        print(f"   Formula: z = (x - mean) / std")
+        print(f"   Target: mean=0, std=1")
         print()
-        
-        # Đề xuất phương pháp scaling
-        if n_with_outliers / len(self.numerical_columns) > 0.3:
-            recommended_scaler = "RobustScaler"
-            reason = "Nhiều cột có phân phối lệch và outliers"
-        elif n_with_outliers / len(self.numerical_columns) > 0.1:
-            recommended_scaler = "StandardScaler"
-            reason = "Một số cột có phân phối lệch nhưng không quá nhiều outliers"
-        else:
-            recommended_scaler = "MinMaxScaler"
-            reason = "Phần lớn các cột có phân phối tương đối cân đối, ít outliers"
-        
-        print(f"Đề xuất phương pháp scaling: {recommended_scaler}")
-        print(f"Lý do: {reason}")
-        print()
-        
-        self.log_action("Phân tích phân phối dữ liệu", 
-                       f"Đã phân tích {len(self.numerical_columns)} cột số, đề xuất sử dụng {recommended_scaler}")
-        
-        # Trả về thống kê và đề xuất
-        return {
-            'distribution_stats': distribution_stats,
-            'recommended_scaler': recommended_scaler,
-            'reason': reason,
-            'n_with_outliers': n_with_outliers
-        }
-
-    # =======================================================================================================================
-    # HÀM THỰC HIỆN SCALING DỮ LIỆU
-    def scale_features(self, method=None, columns=None):
-        """
-        Thực hiện scaling dữ liệu với phương pháp được chỉ định.
-        
-        Tham số:
-        - method (str): Phương pháp scaling ('standard', 'minmax', hoặc 'robust'). Nếu None, sẽ sử dụng phương pháp đề xuất.
-        - columns (list): Danh sách các cột cần scaling. Nếu None, sẽ áp dụng cho tất cả cột số.
-        """
-        print("="*100)
-        print("Bước 4: THỰC HIỆN SCALING DỮ LIỆU")
-        print()
-        
-        if not hasattr(self, 'processed_dataset') or self.processed_dataset is None:
-            self.processed_dataset = self.dataset.copy()
-            
-        if not columns:
-            columns = self.numerical_columns
-            
-        # Lọc ra chỉ các cột tồn tại trong dataset
-        columns = [col for col in columns if col in self.dataset.columns]
-        
-        if len(columns) == 0:
-            print("Không có cột nào để thực hiện scaling.")
-            return None
-            
-        # Nếu không chỉ định phương pháp, sử dụng đề xuất từ phân tích phân phối
-        if method is None:
-            if hasattr(self, 'distribution_analysis') and self.distribution_analysis:
-                method = self.distribution_analysis['recommended_scaler'].lower()
-            else:
-                # Phân tích phân phối nếu chưa thực hiện
-                analysis = self.analyze_distribution()
-                method = analysis['recommended_scaler'].lower()
-        
-        # Chuyển đổi tên phương pháp
-        method = method.lower()
-        if 'standard' in method:
-            scaler = StandardScaler()
-            method_name = "StandardScaler"
-        elif 'minmax' in method:
-            scaler = MinMaxScaler()
-            method_name = "MinMaxScaler"
-        elif 'robust' in method:
-            scaler = RobustScaler()
-            method_name = "RobustScaler"
-        else:
-            print(f"Phương pháp scaling không được hỗ trợ: {method}. Sử dụng StandardScaler.")
-            scaler = StandardScaler()
-            method_name = "StandardScaler"
-            
-        print(f"Áp dụng {method_name} cho {len(columns)} cột:")
-        print("-" * 80)
-        
         try:
-            # Lưu thông số trước khi scaling
-            before_stats = {}
-            for col in columns:
-                before_stats[col] = {
-                    'mean': self.dataset[col].mean(),
-                    'median': self.dataset[col].median(),
-                    'std': self.dataset[col].std(),
-                    'min': self.dataset[col].min(),
-                    'max': self.dataset[col].max()
-                }
-            
-            # Thực hiện scaling
-            scaled_data = scaler.fit_transform(self.dataset[columns])
-            
-            # Tạo DataFrame mới với dữ liệu đã scaled
-            scaled_df = pd.DataFrame(scaled_data, columns=columns)
-            
-            # Lưu các cột đã scaled vào processed_dataset
-            for col in columns:
-                self.processed_dataset[col] = scaled_df[col]
-            
-            # Lưu thông số sau khi scaling
-            after_stats = {}
-            for col in columns:
-                after_stats[col] = {
-                    'mean': self.processed_dataset[col].mean(),
-                    'median': self.processed_dataset[col].median(),
-                    'std': self.processed_dataset[col].std(),
-                    'min': self.processed_dataset[col].min(),
-                    'max': self.processed_dataset[col].max()
-                }
-                
-                # Hiển thị thống kê
-                print(f"{col}:")
-                if method_name == "StandardScaler":
-                    print(f"  Trước: mean={before_stats[col]['mean']:.2f}, std={before_stats[col]['std']:.2f}, range=[{before_stats[col]['min']:.2f}, {before_stats[col]['max']:.2f}]")
-                    print(f"  Sau  : mean={after_stats[col]['mean']:.2f}, std={after_stats[col]['std']:.2f}, range=[{after_stats[col]['min']:.2f}, {after_stats[col]['max']:.2f}]")
-                elif method_name == "MinMaxScaler":
-                    print(f"  Trước: min={before_stats[col]['min']:.2f}, max={before_stats[col]['max']:.2f}, range={before_stats[col]['max']-before_stats[col]['min']:.2f}")
-                    print(f"  Sau  : min={after_stats[col]['min']:.2f}, max={after_stats[col]['max']:.2f}, range={after_stats[col]['max']-after_stats[col]['min']:.2f}")
-                elif method_name == "RobustScaler":
-                    print(f"  Trước: median={before_stats[col]['median']:.2f}, range=[{before_stats[col]['min']:.2f}, {before_stats[col]['max']:.2f}]")
-                    print(f"  Sau  : median={after_stats[col]['median']:.2f}, range=[{after_stats[col]['min']:.2f}, {after_stats[col]['max']:.2f}]")
-                print()
-                
-            # Lưu thông tin scaler
-            self.scaling_method = method_name
-            self.scaler = scaler
-            self.scaled_columns = columns
-            self.scaling_stats = {
-                'before': before_stats,
-                'after': after_stats
-            }
-            
-            # Vẽ biểu đồ so sánh trước và sau scaling
-            sample_cols = columns[:min(5, len(columns))]
-            
-            fig, axes = plt.subplots(len(sample_cols), 2, figsize=(16, 4*len(sample_cols)))
-            if len(sample_cols) == 1:
-                axes = [axes]
-                
-            for i, col in enumerate(sample_cols):
-                # Trước scaling
-                sns.histplot(self.dataset[col], kde=True, ax=axes[i, 0])
-                axes[i, 0].set_title(f'{col} - Trước scaling')
-                
-                # Sau scaling
-                sns.histplot(self.processed_dataset[col], kde=True, ax=axes[i, 1])
-                axes[i, 1].set_title(f'{col} - Sau scaling ({method_name})')
-                
-            plt.tight_layout()
-            
-            # Lưu biểu đồ
-            figure_dir = os.path.join(r"C:\Project\Machine_Learning\Machine_Learning\output\Scaling&Selection_report\figures")
-            os.makedirs(figure_dir, exist_ok=True)
-            scaling_plot_path = os.path.join(figure_dir, f'{method_name.lower()}_comparison.png')
-            plt.savefig(scaling_plot_path)
-            plt.close()
-            
-            print(f"Đã lưu biểu đồ so sánh {method_name}: {scaling_plot_path}")
+            scaled_data = self.scaler.fit_transform(self.df)
+            self.df_scaled = pd.DataFrame(scaled_data, columns=self.df.columns, index=self.df.index)
+            print(f"Scaling completed successfully")
+            print(f"   Scaled shape: {self.df_scaled.shape}")
             print()
-            
-            self.log_action(f"Áp dụng {method_name}", f"Đã scaling {len(columns)} cột")
-            
-            return {
-                'method': method_name,
-                'columns': columns,
-                'before_stats': before_stats,
-                'after_stats': after_stats
-            }
-            
-        except Exception as e:
-            print(f"Lỗi khi thực hiện scaling: {e}")
-            import traceback
-            print(traceback.format_exc())
-            return None
-
-    # =======================================================================================================================
-    # HÀM XỬ LÝ MULTICOLLINEARITY
-    def handle_multicollinearity(self, correlation_threshold=0.8, method='select_one'):
-        """
-        Xử lý multicollinearity giữa các đặc trưng.
-        
-        Tham số:
-        - correlation_threshold (float): Ngưỡng tương quan để xác định multicollinearity.
-        - method (str): Phương pháp xử lý ('select_one' hoặc 'vif').
-        """
-        print("="*100)
-        print("Bước 5: XỬ LÝ MULTICOLLINEARITY")
-        print()
-        
-        # Đảm bảo đã có phân tích tương quan
-        if not hasattr(self, 'correlation_analysis'):
-            self.analyze_feature_correlation(correlation_threshold)
-        
-        high_correlation_pairs = self.correlation_analysis['high_correlation_pairs']
-        correlation_matrix = self.correlation_analysis['correlation_matrix']
-        
-        if not high_correlation_pairs:
-            print("Không phát hiện multicollinearity đáng kể (không có cặp đặc trưng có tương quan cao).")
-            return None
-        
-        print(f"Xử lý multicollinearity với ngưỡng tương quan: {correlation_threshold}")
-        print(f"Phương pháp: {method}")
-        print(f"Tổng số cặp đặc trưng có tương quan cao: {len(high_correlation_pairs)}")
-        print()
-        
-        features_to_remove = set()
-        
-        if method == 'select_one':
-            # Chọn một đặc trưng từ mỗi cặp có tương quan cao
-            for pair in high_correlation_pairs:
-                feature1 = pair['feature1']
-                feature2 = pair['feature2']
-                
-                # Bỏ qua nếu một trong hai đặc trưng đã được đánh dấu để loại bỏ
-                if feature1 in features_to_remove or feature2 in features_to_remove:
-                    continue
-                
-                # Tính trung bình tương quan tuyệt đối với các đặc trưng khác
-                corr1 = correlation_matrix.loc[feature1].drop(feature1).abs().mean()
-                corr2 = correlation_matrix.loc[feature2].drop(feature2).abs().mean()
-                
-                # Loại bỏ đặc trưng có trung bình tương quan cao hơn
-                if corr1 > corr2:
-                    features_to_remove.add(feature1)
-                    print(f"Loại bỏ {feature1} (giữ {feature2}): {feature1} có mean absolute corr = {corr1:.3f}, {feature2} có mean absolute corr = {corr2:.3f}")
-                else:
-                    features_to_remove.add(feature2)
-                    print(f"Loại bỏ {feature2} (giữ {feature1}): {feature1} có mean absolute corr = {corr1:.3f}, {feature2} có mean absolute corr = {corr2:.3f}")
-                    
-        elif method == 'vif':
-            # Sử dụng VIF (Variance Inflation Factor)
-            print("Tính toán VIF cho các đặc trưng...")
-            
-            # Chuẩn bị dữ liệu để tính VIF
-            X = self.processed_dataset[self.numerical_columns].copy()
-            X = X.assign(const=1)
-            
-            # Tính VIF cho từng đặc trưng
-            vif_data = {}
-            for i, col in enumerate(self.numerical_columns):
-                try:
-                    vif_value = variance_inflation_factor(X.values, i)
-                    vif_data[col] = vif_value
-                    print(f"{col:>25}: VIF = {vif_value:.2f} {'(loại bỏ)' if vif_value > 10 else ''}")
-                except Exception as e:
-                    print(f"Không thể tính VIF cho {col}: {e}")
-                    vif_data[col] = float('inf')
-            
-            # Loại bỏ các đặc trưng có VIF cao
-            vif_threshold = 10.0
-            high_vif_features = [col for col, vif in vif_data.items() if vif > vif_threshold]
-            features_to_remove.update(high_vif_features)
-            
-        else:
-            print(f"Phương pháp xử lý multicollinearity không hợp lệ: {method}")
-            return None
-        
-        features_to_remove = list(features_to_remove)
-        features_to_keep = [col for col in self.numerical_columns if col not in features_to_remove]
-        
-        print("\nKết quả xử lý multicollinearity:")
-        print(f"- Số đặc trưng giữ lại: {len(features_to_keep)}")
-        print(f"- Số đặc trưng loại bỏ: {len(features_to_remove)}")
-        print(f"- Danh sách đặc trưng loại bỏ: {features_to_remove}")
-        
-        # Cập nhật processed_dataset
-        self.processed_dataset = self.processed_dataset.drop(columns=features_to_remove)
-        
-        # Cập nhật numerical_columns
-        self.numerical_columns = features_to_keep
-        
-        self.log_action("Xử lý multicollinearity", 
-                       f"Đã loại bỏ {len(features_to_remove)} đặc trưng, giữ lại {len(features_to_keep)} đặc trưng")
-        
-        return {
-            'features_to_keep': features_to_keep,
-            'features_to_remove': features_to_remove
-        }
-
-    # =======================================================================================================================
-    # HÀM CHỌN ĐẶC TRƯNG QUAN TRỌNG
-    def select_important_features(self, target_column, n_features=None, importance_threshold=0.01):
-        """
-        Chọn đặc trưng quan trọng dựa trên độ quan trọng từ Random Forest.
-        
-        Tham số:
-        - target_column (str): Tên cột mục tiêu.
-        - n_features (int): Số lượng đặc trưng muốn giữ lại. Nếu None, sẽ dựa vào ngưỡng.
-        - importance_threshold (float): Ngưỡng độ quan trọng để chọn đặc trưng.
-        """
-        print("="*100)
-        print("Bước 6: CHỌN ĐẶC TRƯNG QUAN TRỌNG")
-        print()
-        
-        if target_column not in self.processed_dataset.columns:
-            print(f"Không tìm thấy cột mục tiêu '{target_column}'. Vui lòng kiểm tra lại.")
-            return None
-            
-        numerical_columns = [col for col in self.numerical_columns if col in self.processed_dataset.columns]
-        
-        if len(numerical_columns) == 0:
-            print("Không có cột số để chọn đặc trưng quan trọng.")
-            return None
-            
-        print(f"Sử dụng Random Forest để đánh giá độ quan trọng của đặc trưng...")
-        print(f"- Cột mục tiêu: {target_column}")
-        print(f"- Số lượng đặc trưng đầu vào: {len(numerical_columns)}")
-        
-        try:
-            # Chuẩn bị dữ liệu
-            X = self.processed_dataset[numerical_columns]
-            y = self.processed_dataset[target_column]
-            
-            # Huấn luyện Random Forest để đánh giá độ quan trọng của đặc trưng
-            clf = RandomForestClassifier(n_estimators=100, random_state=42, n_jobs=-1)
-            clf.fit(X, y)
-            
-            # Tính độ quan trọng
-            importances = clf.feature_importances_
-            
-            # Tạo DataFrame chứa độ quan trọng
-            feature_importances = pd.DataFrame({
-                'feature': numerical_columns,
-                'importance': importances
-            }).sort_values(by='importance', reverse=True)
-            
-            # Hiển thị độ quan trọng
-            print("\nĐộ quan trọng của các đặc trưng:")
-            for _, row in feature_importances.iterrows():
-                print(f"{row['feature']:>25}: {row['importance']:.5f}")
-            
-            # Chọn đặc trưng dựa trên số lượng hoặc ngưỡng
-            if n_features is not None:
-                selected_features = feature_importances['feature'].head(n_features).tolist()
-                selection_criteria = f"top {n_features} đặc trưng"
-            else:
-                selected_features = feature_importances[feature_importances['importance'] >= importance_threshold]['feature'].tolist()
-                selection_criteria = f"ngưỡng độ quan trọng {importance_threshold}"
-            
-            # Thêm cột mục tiêu và categorical columns
-            selected_features = selected_features + [target_column] + self.categorical_columns
-            selected_features = list(set(selected_features))  # Loại bỏ trùng lặp
-            
-            # Các đặc trưng bị loại bỏ
-            excluded_features = [col for col in numerical_columns if col not in selected_features]
-            
-            print(f"\nChọn đặc trưng với {selection_criteria}:")
-            print(f"- Số đặc trưng số giữ lại: {len(selected_features) - 1 - len(self.categorical_columns)}")
-            print(f"- Số đặc trưng số loại bỏ: {len(excluded_features)}")
-            print(f"- Tổng số cột trong dataset sau khi chọn: {len(selected_features)}")
-            
-            # Cập nhật processed_dataset
-            self.processed_dataset = self.processed_dataset[selected_features]
-            
-            # Cập nhật numerical_columns
-            self.numerical_columns = [col for col in self.numerical_columns if col in selected_features]
-            
-            # Vẽ biểu đồ độ quan trọng
-            plt.figure(figsize=(14, 6))
-            top_features = feature_importances.head(20)
-            sns.barplot(x='feature', y='importance', data=top_features)
-            plt.xticks(rotation=90)
-            plt.xlabel('Features')
-            plt.ylabel('Importance')
-            plt.title('Top 20 Feature Importance')
-            if importance_threshold is not None and n_features is None:
-                plt.axhline(y=importance_threshold, color='r', linestyle='--', label=f'Threshold: {importance_threshold}')
-                plt.legend()
-            plt.tight_layout()
-            
-            # Lưu biểu đồ
-            figure_dir = os.path.join(r"C:\Project\Machine_Learning\Machine_Learning\output\Scaling&Selection_report\figures")
-            os.makedirs(figure_dir, exist_ok=True)
-            importance_plot_path = os.path.join(figure_dir, 'feature_importance.png')
-            plt.savefig(importance_plot_path)
-            plt.close()
-            
-            print(f"\nĐã lưu biểu đồ độ quan trọng đặc trưng: {importance_plot_path}")
-            
-            self.log_action("Chọn đặc trưng quan trọng", 
-                           f"Đã chọn {len(selected_features)} đặc trưng dựa trên {selection_criteria}")
-            
-            return {
-                'selected_features': selected_features,
-                'excluded_features': excluded_features,
-                'feature_importances': feature_importances.to_dict('records')
-            }
-            
-        except Exception as e:
-            print(f"Lỗi khi chọn đặc trưng quan trọng: {e}")
-            import traceback
-            print(traceback.format_exc())
-            return None
-
-    # =======================================================================================================================
-    # HÀM XUẤT DATASET ĐÃ XỬ LÝ
-    def export_processed_dataset(self, filename=None):
-        """
-        Xuất dataset đã xử lý ra file.
-        
-        Tham số:
-        - filename (str): Tên file xuất. Nếu None, sẽ tự động tạo tên.
-        """
-        print("="*100)
-        print("Bước 7: XUẤT DATASET ĐÃ XỬ LÝ")
-        print()
-        
-        if self.processed_dataset is None or len(self.processed_dataset) == 0:
-            print("Không có dữ liệu để xuất.")
-            return None
-            
-        try:
-            # Tạo tên file xuất
-            if filename is None:
-                timestamp = pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')
-                filename = f"scaled_selected_dataset_{timestamp}.csv"
-                
-            # Đường dẫn đầy đủ
-            output_path = os.path.join(r"C:\Project\Machine_Learning\Machine_Learning\Dataset", filename)
-            
-            # Xuất dataset
-            self.processed_dataset.to_csv(output_path, index=False)
-            
-            print(f"Đã xuất dataset đã xử lý thành công:")
-            print(f"- Đường dẫn: {output_path}")
-            print(f"- Shape: {self.processed_dataset.shape}")
-            print(f"- Số cột số: {len(self.numerical_columns)}")
-            print(f"- Số cột phân loại: {len(self.categorical_columns)}")
+            print("Scaler parameters (learned from data):")
+            for i, col in enumerate(self.df.columns):
+                print(f"   {col}:")
+                print(f"      Mean (μ): {self.scaler.mean_[i]:>12.3f}")
+                print(f"      Std (σ):  {self.scaler.scale_[i]:>12.3f}")
             print()
-            
-            self.log_action("Xuất dataset đã xử lý", 
-                           f"Đã xuất dataset {self.processed_dataset.shape} ra {output_path}")
-            
-            return output_path
-            
+            self.log_action("Apply StandardScaler", "Success")
+            return True
         except Exception as e:
-            print(f"Lỗi khi xuất dataset: {e}")
-            import traceback
-            print(traceback.format_exc())
-            return None
-
-    # =======================================================================================================================
-    # HÀM TẠO TÓM TẮT KẾT QUẢ
-    def generate_summary(self, start_time):
-        """
-        Tạo tóm tắt kết quả của quá trình Feature Scaling & Selection.
-        
-        Tham số:
-        - start_time (float): Thời điểm bắt đầu quá trình.
-        """
-        print("="*100)
-        print("TÓM TẮT KẾT QUẢ FEATURE SCALING & SELECTION")
-        print("="*100)
-        
-        # Thời gian thực hiện
-        elapsed_time = time.time() - start_time
-        
-        # Thông tin dataset
-        original_shape = self.original_shape
-        current_shape = self.processed_dataset.shape if self.processed_dataset is not None else None
-        
-        print("THÔNG TIN DATASET:")
-        print(f"    Shape ban đầu          : {original_shape[0]:,} dòng × {original_shape[1]} cột")
-        if current_shape:
-            print(f"    Shape sau xử lý        : {current_shape[0]:,} dòng × {current_shape[1]} cột")
-            cols_diff = current_shape[1] - original_shape[1]
-            diff_text = f"{cols_diff:+}" if cols_diff != 0 else "không đổi"
-            print(f"    Thay đổi số cột       : {diff_text}")
-        
-        # Thông tin scaling
-        print("\nFEATURE SCALING:")
-        if hasattr(self, 'scaling_method') and self.scaling_method:
-            print(f"    Phương pháp           : {self.scaling_method}")
-            print(f"    Số cột áp dụng        : {len(self.scaled_columns)}")
-        else:
-            print("    Không thực hiện scaling")
-            
-        # Thông tin feature selection
-        print("\nFEATURE SELECTION:")
-        original_numerical = len([col for col in self.dataset.columns if col in self.numerical_columns])
-        current_numerical = len(self.numerical_columns)
-        print(f"    Số đặc trưng ban đầu  : {original_numerical}")
-        print(f"    Số đặc trưng giữ lại  : {current_numerical}")
-        print(f"    Số đặc trưng loại bỏ  : {original_numerical - current_numerical}")
-        
-        # Hiệu suất xử lý
-        print("\nHIỆU SUẤT XỬ LÝ:")
-        print(f"    Thời gian xử lý       : {elapsed_time:.2f} giây")
-        print(f"    Tốc độ xử lý          : {len(self.dataset) / elapsed_time:.0f} dòng/giây")
-        print(f"    Bộ nhớ sử dụng        : {self.processed_dataset.memory_usage(deep=True).sum() / 1024 / 1024:.2f} MB")
-        
-        # Trạng thái hệ thống
-        print("\nTRẠNG THÁI HỆ THỐNG:")
-        print(f"    Tính toàn vẹn dữ liệu : Được duy trì")
-        print(f"    Log system            : Hoàn thành ({len(self.processing_log)} actions)")
-        print(f"    Feature scaling       : Hoàn thành")
-        print(f"    Feature selection     : Hoàn thành")
-        
-        # Trả về thông tin tóm tắt
-        summary = {
-            'original_shape': original_shape,
-            'current_shape': current_shape,
-            'scaling_method': self.scaling_method if hasattr(self, 'scaling_method') else None,
-            'num_original_features': original_numerical,
-            'num_selected_features': current_numerical,
-            'elapsed_time': elapsed_time
-        }
-        
-        return summary
-
-    # =======================================================================================================================
-    # HÀM HIỂN THỊ LOG
-    def display_processing_log(self):
-        """
-        Hiển thị log các hành động đã thực hiện.
-        """
-        print("="*100)
-        print("LOG CÁC HÀNH ĐỘNG THỰC HIỆN")
-        print("="*100)
-        
-        if not self.processing_log:
-            print("Không có log nào được ghi lại.")
-            return
-            
-        print(f"Tổng số hành động: {len(self.processing_log)}")
+            print(f"Scaling failed: {e}")
+            self.log_action("Apply StandardScaler FAILED", str(e))
+            return False
+    
+    # STEP 5: POST-SCALING STATS (keeps previous robust detection)
+    def compute_post_stats(self):
+        self._print_header("STEP 4: POST-SCALING STATISTICS")
+        print("Scaled feature statistics:")
         print()
-        
-        for i, log_entry in enumerate(self.processing_log, 1):
-            timestamp = log_entry['timestamp'].strftime('%H:%M:%S')
-            action = log_entry['action']
-            details = log_entry.get('details', '')
-            
-            print(f"{i:2d}.  [{timestamp}] {action}")
-            if details:
-                print(f"   └─ {details}")
-        
-        print(f"\nĐã hoàn thành {len(self.processing_log)} hành động")
+        extreme_values_summary = []
+        for col in self.df_scaled.columns:
+            stats = {
+                'mean': self.df_scaled[col].mean(),
+                'std': self.df_scaled[col].std(ddof=0),
+                'min': self.df_scaled[col].min(),
+                'max': self.df_scaled[col].max(),
+                'median': self.df_scaled[col].median(),
+                'skewness': self.df_scaled[col].skew()
+            }
+            self.post_stats[col] = stats
+            print(f"{col}:")
+            print(f"   Mean: {stats['mean']:>12.6f} (target: 0.000)")
+            print(f"   Std:  {stats['std']:>12.6f} (target: 1.000)")
+            print(f"   Min:  {stats['min']:>12.3f}")
+            print(f"   Max:  {stats['max']:>12.3f}")
+            print(f"   Median: {stats['median']:>10.3f}")
+            print(f"   Skewness: {stats['skewness']:>8.3f}")
+            if abs(stats['min']) > 3 or abs(stats['max']) > 3:
+                extreme_values_summary.append((col, stats['min'], stats['max']))
+                print(f"   NOTE: Contains extreme values (|z| > 3)")
+            print()
+        if extreme_values_summary:
+            print()
+            print("EXTREME VALUES SUMMARY (|z-score| > 3):")
+            print("-" * 100)
+            for col, min_val, max_val in extreme_values_summary:
+                outlier_count = ((self.df_scaled[col] < -3) | (self.df_scaled[col] > 3)).sum()
+                outlier_pct = outlier_count / len(self.df_scaled) * 100
+                print(f"   {col:<40} Range: [{min_val:>7.3f}, {max_val:>7.3f}]  Outliers: {outlier_count} ({outlier_pct:.2f}%)")
+            print()
+        self.log_action("Compute post-scaling stats", f"{len(self.df_scaled.columns)} features")
+    
+    # STEP 6: VALIDATE SCALING
+    def validate_scaling(self):
+        self._print_header("STEP 5: VALIDATE SCALING RESULTS")
+        print("Validation checks:")
+        print()
+        mean_check = []
+        for col in self.df_scaled.columns:
+            mean = self.df_scaled[col].mean()
+            status = "PASS" if abs(mean) < 1e-10 else "WARNING"
+            mean_check.append((col, mean, status))
+        print("Mean ≈ 0 check:")
+        for col, mean, status in mean_check:
+            print(f"   {col:<40} mean={mean:>12.10f} ({status})")
+        print()
+        std_check = []
+        for col in self.df_scaled.columns:
+            std = self.df_scaled[col].std(ddof=0)
+            status = "PASS" if abs(std - 1.0) < 1e-10 else "WARNING"
+            std_check.append((col, std, status))
+        print("Std ≈ 1 check (using ddof=0 to match StandardScaler):")
+        for col, std, status in std_check:
+            print(f"   {col:<40} std={std:>12.10f} ({status})")
+        print()
+        missing_after = self.df_scaled.isnull().sum().sum()
+        if missing_after == 0:
+            print("Missing values after scaling: None (PASS)")
+        else:
+            print(f"Missing values after scaling: {missing_after} (FAILED)")
+        print()
+        self.log_action("Validate scaling", "Checks completed")
+    
+    # NEW STEP: APPLY ROBUST SCALER (OPTIONAL)
+    def apply_robust_scaling(self):
+        """Apply RobustScaler to selected numeric columns and export alternative dataset."""
+        if not self.use_robust:
+            return False
+        self._print_header("OPTIONAL: APPLY ROBUSTSCALER")
+        # choose columns
+        if self.robust_columns is None:
+            cols = [c for c in self.df.columns if np.issubdtype(self.df[c].dtype, np.number)]
+        else:
+            cols = [c for c in self.robust_columns if c in self.df.columns and np.issubdtype(self.df[c].dtype, np.number)]
+        if not cols:
+            print("No numeric columns found for RobustScaler. Skipping robust scaling.")
+            self.log_action("Apply RobustScaler SKIPPED", "No numeric columns")
+            return False
+        print(f"Applying RobustScaler to columns: {cols}")
+        try:
+            self.robust_scaler = RobustScaler()
+            arr = self.robust_scaler.fit_transform(self.df[cols])
+            df_rob = self.df.copy()
+            df_rob[cols] = arr
+            self.df_robust_scaled = df_rob
+            # save scaler and CSV
+            joblib.dump(self.robust_scaler, self.robust_scaler_file)
+            df_rob.to_csv(self.robust_output_csv, index=False)
+            print(f"Exported robust-scaled dataset: {self.robust_output_csv}")
+            print(f"Saved robust scaler: {self.robust_scaler_file}")
+            self.log_action("Apply RobustScaler", f"Columns: {cols}")
+            self.log_action("Export robust dataset", self.robust_output_csv)
+            self.log_action("Save robust scaler", self.robust_scaler_file)
+            return True
+        except Exception as e:
+            print(f"Robust scaling failed: {e}")
+            self.log_action("Apply RobustScaler FAILED", str(e))
+            return False
+    
+    # STEP 7: EXPORT SCALED DATASET
+    def export_dataset(self):
+        self._print_header("STEP 6: EXPORT SCALED DATASET")
+        try:
+            self.df_scaled.to_csv(self.output_csv, index=False)
+            print(f"Exported scaled dataset successfully:")
+            print(f"   Path: {self.output_csv}")
+            print(f"   Shape: {self.df_scaled.shape}")
+            print(f"   Size: {os.path.getsize(self.output_csv) / 1024:.2f} KB")
+            print()
+            self.log_action("Export scaled dataset", self.output_csv)
+            return True
+        except Exception as e:
+            print(f"Export failed: {e}")
+            self.log_action("Export FAILED", str(e))
+            return False
+    
+    # STEP 8: EXPORT REPORT
+    def export_report(self):
+        self._print_header("STEP 7: EXPORT REPORT")
+        try:
+            with open(self.report_file, 'w', encoding='utf-8') as f:
+                f.write("=" * 100 + "\n")
+                f.write("DEMOGRAPHIC FEATURE SCALING REPORT\n")
+                f.write("=" * 100 + "\n\n")
+                f.write(f"Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+                f.write(f"Input: {self.input_path}\n")
+                f.write(f"Output: {self.output_csv}\n")
+                f.write(f"Scaling Method: StandardScaler (Z-score normalization)\n")
+                if self.use_robust:
+                    f.write(f"RobustScaler output: {self.robust_output_csv}\n")
+                f.write("\n")
+                f.write("DATASET INFORMATION:\n")
+                f.write("-" * 100 + "\n")
+                f.write(f"Shape: {self.df.shape[0]:,} rows x {self.df.shape[1]} columns\n\n")
+                f.write("PRE-SCALING STATISTICS:\n")
+                f.write("-" * 100 + "\n")
+                for col, stats in self.pre_stats.items():
+                    f.write(f"{col}:\n")
+                    for key, val in stats.items():
+                        f.write(f"   {key}: {val}\n")
+                    f.write("\n")
+                f.write("\nSCALER PARAMETERS:\n")
+                f.write("-" * 100 + "\n")
+                for i, col in enumerate(self.df.columns):
+                    f.write(f"{col}:\n")
+                    f.write(f"   mean: {self.scaler.mean_[i]}\n")
+                    f.write(f"   scale: {self.scaler.scale_[i]}\n\n")
+                f.write("\nPOST-SCALING STATISTICS:\n")
+                f.write("-" * 100 + "\n")
+                for col, stats in self.post_stats.items():
+                    f.write(f"{col}:\n")
+                    for key, val in stats.items():
+                        f.write(f"   {key}: {val}\n")
+                    f.write("\n")
+                f.write("\nPROCESSING LOG:\n")
+                f.write("-" * 100 + "\n")
+                for i, log in enumerate(self.processing_log, 1):
+                    f.write(f"{i}. [{log['timestamp']}] {log['action']}\n")
+                    if log['details']:
+                        f.write(f"   Details: {log['details']}\n")
+                f.write("\n" + "=" * 100 + "\n")
+                f.write("Report generated successfully\n")
+                f.write("=" * 100 + "\n")
+            print(f"Exported report successfully:")
+            print(f"   Path: {self.report_file}")
+            print(f"   Size: {os.path.getsize(self.report_file) / 1024:.2f} KB")
+            print()
+            self.log_action("Export report", self.report_file)
+            return True
+        except Exception as e:
+            print(f"Report export failed: {e}")
+            return False
+    
+    # MAIN PIPELINE
+    def run_scaling(self):
+        print("\n" + "=" * 100)
+        print("... FEATURE SCALING PIPELINE".center(100))
+        print("=" * 100 + "\n")
+        start_time = datetime.now()
+        if not self.load_data():
+            print("Pipeline failed at load_data()")
+            return False
+        self.validate_data()
+        self.compute_pre_stats()
+        if not self.apply_scaling():
+            print("Pipeline failed at apply_scaling()")
+            return False
+        self.compute_post_stats()
+        self.validate_scaling()
+        if not self.export_dataset():
+            print("Pipeline failed at export_dataset()")
+            return False
+        # optional robust scaling
+        if self.use_robust:
+            self.apply_robust_scaling()
+        self.save_scaler()
+        self.export_report()
+        elapsed = (datetime.now() - start_time).total_seconds()
+        print("=" * 100)
+        print("PIPELINE COMPLETED".center(100))
+        print("=" * 100)
+        print(f"Time elapsed: {elapsed:.2f} seconds")
+        print(f"Output dataset: {self.output_csv}")
+        if self.use_robust:
+            print(f"Robust dataset: {self.robust_output_csv}")
+        print(f"Output report: {self.report_file}")
+        print(f"Saved scaler: {self.scaler_file}")
+        print("=" * 100 + "\n")
+        return True
 
-    # =======================================================================================================================
-    # HÀM XUẤT BÁO CÁO TEXT
-    def export_text_report(self, output_dir=None):
-        """
-        Xuất báo cáo text chi tiết về quá trình Feature Scaling & Selection.
-        """
-        if output_dir is None:
-            output_dir = r"C:\Project\Machine_Learning\Machine_Learning\output\Scaling&Selection_report"
+    def save_scaler(self):
+        try:
+            joblib.dump(self.scaler, self.scaler_file)
+            print(f"Saved scaler to: {self.scaler_file}")
+            self.log_action("Save scaler", self.scaler_file)
+            return True
+        except Exception as e:
+            print(f"Failed to save scaler: {e}")
+            self.log_action("Save scaler FAILED", str(e))
+            return False
+
+
+# ================================================================================
+# CLASS 2: PRODUCT+CHANNEL SCALER
+# ================================================================================
+
+class ProductChannelScaler:
+    """
+    ProductChannel scaler with optional RobustScaler.
+    Same pattern as DemographicScaler.
+    """
+    def __init__(self, input_path, output_dir, report_dir, use_robust=False, robust_columns=None):
+        self.input_path = input_path
+        self.output_dir = output_dir
+        self.report_dir = report_dir
+        self.use_robust = use_robust
+        self.robust_columns = robust_columns
 
         os.makedirs(output_dir, exist_ok=True)
+        os.makedirs(report_dir, exist_ok=True)
 
-        report_file = os.path.join(output_dir, f"Feature_Scaling_Selection_report.txt")
+        self.output_csv = os.path.join(output_dir, "Customer_Behavior_ProductChannel_scaled.csv")
+        self.report_file = os.path.join(report_dir, "ProductChannel_Scaling_Report.log")
+        self.scaler_file = os.path.join(output_dir, "productchannel_scaler.pkl")
+        self.robust_output_csv = os.path.join(output_dir, "Customer_Behavior_ProductChannel_robust_scaled.csv")
+        self.robust_scaler_file = os.path.join(output_dir, "productchannel_robust_scaler.pkl")
 
-        try:
-            with open(report_file, 'w', encoding='utf-8') as f:
-                # Header
-                f.write("=" * 100 + "\n")
-                f.write("THỰC HIỆN QUY TRÌNH FEATURE SCALING & SELECTION HOÀN CHỈNH\n")
-                f.write("=" * 100 + "\n")
-                f.write("Bước 1: TẢI VÀ ĐỌC DỮ LIỆU\n\n")
-            
-                if self.dataset is not None:
-                    f.write(f"Dữ liệu đã được tải thành công: {self.dataset.shape[0]:,} dòng × {self.dataset.shape[1]} cột\n")
-                    f.write(f"- Cột số: {len(self.numerical_columns)}\n")
-                    f.write(f"- Cột phân loại: {len(self.categorical_columns)}\n\n")
-            
-                # Ghi chi tiết các bước từ processing log
-                current_step = 2  # Bắt đầu từ bước 2 vì bước 1 đã viết ở trên
-                for log_entry in self.processing_log:
-                    timestamp = log_entry['timestamp'].strftime('%H:%M:%S')
-                    action = log_entry['action']
-                    details = log_entry.get('details', '')
-                
-                    # Kiểm tra nếu là bước chính
-                    if any(keyword in action for keyword in [
-                        'Phân tích tương quan',
-                        'Phân tích phân phối',
-                        'Áp dụng StandardScaler',
-                        'Áp dụng MinMaxScaler',
-                        'Áp dụng RobustScaler',
-                        'Xử lý multicollinearity',
-                        'Chọn đặc trưng quan trọng',
-                        'Xuất dataset đã xử lý'
-                    ]):
-                        # Tạo tiêu đề bước
-                        if 'Phân tích tương quan' in action:
-                            step_title = "PHÂN TÍCH TƯƠNG QUAN ĐẶC TRƯNG"
-                        elif 'Phân tích phân phối' in action:
-                            step_title = "PHÂN TÍCH PHÂN PHỐI DỮ LIỆU"
-                        elif 'Áp dụng StandardScaler' in action:
-                            step_title = "ÁP DỤNG STANDARDSCALER"
-                        elif 'Áp dụng MinMaxScaler' in action:
-                            step_title = "ÁP DỤNG MINMAXSCALER"
-                        elif 'Áp dụng RobustScaler' in action:
-                            step_title = "ÁP DỤNG ROBUSTSCALER"
-                        elif 'Xử lý multicollinearity' in action:
-                            step_title = "XỬ LÝ MULTICOLLINEARITY"
-                        elif 'Chọn đặc trưng quan trọng' in action:
-                            step_title = "CHỌN ĐẶC TRƯNG QUAN TRỌNG"
-                        elif 'Xuất dataset đã xử lý' in action:
-                            step_title = "XUẤT DATASET ĐÃ XỬ LÝ"
-                        else:
-                            step_title = action.upper()
-                        
-                        f.write(f"\n{'='*100}\n")
-                        f.write(f"Bước {current_step}: {step_title}\n")
-                        f.write(f"{'='*100}\n")
-                        current_step += 1
-                
-                    f.write(f"[{timestamp}] {action}\n")
-                    if details:
-                        f.write(f"    └─ {details}\n")
-                    f.write("\n")
-                    
-            print(f"Đã xuất báo cáo Feature Scaling & Selection ra file: {report_file}")
-            return report_file
-        
-        except Exception as e:
-            print(f"Lỗi khi xuất báo cáo: {e}")
-            return None
+        self.df = None
+        self.df_scaled = None
+        self.df_robust_scaled = None
+        self.scaler = StandardScaler()
+        self.robust_scaler = None
+        self.pre_stats = {}
+        self.post_stats = {}
+        self.processing_log = []
 
-    # =======================================================================================================================
-    # HÀM THỰC HIỆN TOÀN BỘ PIPELINE
-    def run_pipeline(self, target_column='Response', scaling_method=None):
-        """
-        Thực hiện toàn bộ pipeline Feature Scaling & Selection.
-        
-        Tham số:
-        - target_column (str): Tên cột mục tiêu cho việc chọn đặc trưng quan trọng.
-        - scaling_method (str): Phương pháp scaling sẽ sử dụng. Nếu None, sẽ tự động chọn.
-        """
-        print("="*100)
-        print("THỰC HIỆN QUY TRÌNH FEATURE SCALING & SELECTION HOÀN CHỈNH")
-        print("="*100)
-        
-        start_time = time.time()
-        
-        try:
-            # Bước 1: Load dữ liệu
-            self.load_data()
-            
-            # Bước 2: Phân tích tương quan
-            self.analyze_feature_correlation()
-            
-            # Bước 3: Phân tích phân phối dữ liệu
-            distribution_analysis = self.analyze_distribution()
-            self.distribution_analysis = distribution_analysis
-            
-            # Bước 4: Thực hiện scaling dữ liệu
-            self.scale_features(method=scaling_method)
-            
-            # Bước 5: Xử lý multicollinearity
-            self.handle_multicollinearity(method='select_one')
-            
-            # Bước 6: Chọn đặc trưng quan trọng
-            if target_column in self.dataset.columns:
-                self.select_important_features(target_column=target_column)
-            else:
-                print(f"Không tìm thấy cột mục tiêu '{target_column}'. Bỏ qua bước chọn đặc trưng quan trọng.")
-            
-            # Bước 7: Xuất dataset đã xử lý
-            self.export_processed_dataset()
-            
-            # Hiển thị tóm tắt kết quả
-            self.generate_summary(start_time)
-            
-            # Hiển thị log
-            self.display_processing_log()
-            
-            # Xuất báo cáo text
-            self.export_text_report()
-            
-            # Kết thúc pipeline
-            total_time = time.time() - start_time
-            print("\n" + "=" * 100)
-            print("HOÀN THÀNH FEATURE SCALING & SELECTION")
-            print("=" * 100)
-            print(f" Tổng thời gian thực hiện : {total_time:.2f} giây")
-            print(f" Tốc độ xử lý             : {len(self.dataset) / total_time:.0f} dòng/giây")
-            print(f" Thời gian kết thúc       : {pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')}")
-            
-            return {
-                'success': True,
-                'original_shape': self.original_shape,
-                'final_shape': self.processed_dataset.shape,
-                'elapsed_time': total_time
-            }
-            
-        except Exception as e:
-            print(f"\nLỖI TRONG PIPELINE: {e}")
-            import traceback
-            print("Chi tiết lỗi:")
-            print(traceback.format_exc())
-            return {
-                'success': False,
-                'error': str(e)
-            }
+    def log_action(self, action, details=""):
+        self.processing_log.append({
+            'timestamp': datetime.now().strftime('%H:%M:%S'),
+            'action': action,
+            'details': details
+        })
 
-# =================================================================================================================================
-# HÀM MAIN 
-def main():
-    """
-    Hàm Main
-    """
-    
-    # Đường dẫn đến dataset
-    dataset_path = r"C:\Project\Machine_Learning\Machine_Learning\Dataset\Customer_Behavior_feature_engineered_20251016_141827.csv"
-    
-    try:
-        print("Bắt đầu Feature Scaling & Selection Pipeline")
+    def _print_header(self, title, width=100, char='='):
+        print(char * width)
+        print(f"{title:^{width}}")
+        print(char * width)
         print()
-        
-        # Khởi tạo đối tượng Feature Scaling & Selection
-        scaler_selector = FeatureScalingSelection(dataset_path)
-        
-        # Chạy toàn bộ pipeline
-        results = scaler_selector.run_pipeline(target_column='Response')
-        
-        # Kiểm tra kết quả
-        if results and results.get('success'):
-            print("\n" + "="*60)
-            print("FEATURE SCALING & SELECTION PIPELINE HOÀN THÀNH")
-            print("="*60)
-            print(f"Dataset gốc                : {results['original_shape']}")
-            print(f"Dataset sau xử lý          : {results['final_shape']}")
-            print(f"Tổng thời gian             : {results['elapsed_time']:.2f} giây")
-            print("="*60)
-        else:
-            print("\nFEATURE SCALING & SELECTION PIPELINE GẶP LỖI")
-            if results:
-                print(f"Chi tiết lỗi: {results.get('error', 'Unknown error')}")
-        
-    except Exception as e:
-        print(f"\nLỖI KHỞI TẠO FEATURE SCALING & SELECTION: {e}")
-        import traceback
-        print("Chi tiết lỗi:")
-        print(traceback.format_exc())
 
-# =================================================================================================================================
+    def load_data(self):
+        self._print_header("PRODUCT+CHANNEL SCALING - LOAD DATA")
+        try:
+            self.df = pd.read_csv(self.input_path)
+            print(f"Loaded dataset successfully")
+            print(f"   Path: {self.input_path}")
+            print(f"   Shape: {self.df.shape[0]:,} rows x {self.df.shape[1]} columns")
+            print(f"   Memory: {self.df.memory_usage(deep=True).sum() / 1024:.2f} KB")
+            print()
+            print(f"Features loaded:")
+            for i, col in enumerate(self.df.columns, 1):
+                print(f"   {i}. {col:<40} ({self.df[col].dtype})")
+            print()
+            self.log_action("Load data", f"Shape: {self.df.shape}")
+            return True
+        except Exception as e:
+            print(f"Error loading data: {e}")
+            self.log_action("Load data FAILED", str(e))
+            return False
+
+    def validate_data(self):
+        self._print_header("STEP 1: VALIDATE DATA QUALITY")
+        print("Pre-Scaling Data Quality Checks:")
+        print()
+        missing = self.df.isnull().sum()
+        if missing.sum() == 0:
+            print("   Missing values: None (PASS)")
+        else:
+            print("   Missing values detected:")
+            for col in missing[missing > 0].index:
+                print(f"      {col}: {missing[col]} ({missing[col]/len(self.df)*100:.2f}%)")
+        inf_count = np.isinf(self.df.select_dtypes(include=[np.number])).sum().sum()
+        if inf_count == 0:
+            print("   Infinite values: None (PASS)")
+        else:
+            print(f"   Infinite values: {inf_count} (WARNING)")
+        non_numeric = self.df.select_dtypes(exclude=[np.number]).columns.tolist()
+        if not non_numeric:
+            print("   Data types: All numeric (PASS)")
+        else:
+            print(f"   Non-numeric columns: {non_numeric} (WARNING)")
+        print()
+        self.log_action("Validate data", "Checks completed")
+
+    def compute_pre_stats(self):
+        self._print_header("STEP 2: PRE-SCALING STATISTICS")
+        print("Original feature statistics:")
+        print()
+        for col in self.df.columns:
+            stats = {
+                'mean': self.df[col].mean(),
+                'std': self.df[col].std(),
+                'min': self.df[col].min(),
+                'max': self.df[col].max(),
+                'median': self.df[col].median(),
+                'skewness': self.df[col].skew()
+            }
+            self.pre_stats[col] = stats
+            print(f"{col}:")
+            print(f"   Mean: {stats['mean']:>12.3f}")
+            print(f"   Std:  {stats['std']:>12.3f}")
+            print(f"   Min:  {stats['min']:>12.3f}")
+            print(f"   Max:  {stats['max']:>12.3f}")
+            print(f"   Median: {stats['median']:>10.3f}")
+            print(f"   Skewness: {stats['skewness']:>8.3f}")
+            print()
+        self.log_action("Compute pre-scaling stats", f"{len(self.df.columns)} features")
+
+    def apply_scaling(self):
+        self._print_header("STEP 3: APPLY STANDARDSCALER")
+        print("Applying Z-score normalization...")
+        print(f"   Formula: z = (x - mean) / std")
+        print(f"   Target: mean=0, std=1")
+        print()
+        try:
+            scaled_data = self.scaler.fit_transform(self.df)
+            self.df_scaled = pd.DataFrame(scaled_data, columns=self.df.columns, index=self.df.index)
+            print(f"Scaling completed successfully")
+            print(f"   Scaled shape: {self.df_scaled.shape}")
+            print()
+            print("Scaler parameters (learned from data):")
+            for i, col in enumerate(self.df.columns):
+                print(f"   {col}:")
+                print(f"      Mean (μ): {self.scaler.mean_[i]:>12.3f}")
+                print(f"      Std (σ):  {self.scaler.scale_[i]:>12.3f}")
+            print()
+            self.log_action("Apply StandardScaler", "Success")
+            return True
+        except Exception as e:
+            print(f"Scaling failed: {e}")
+            self.log_action("Apply StandardScaler FAILED", str(e))
+            return False
+
+    def compute_post_stats(self):
+        self._print_header("STEP 4: POST-SCALING STATISTICS")
+        print("Scaled feature statistics:")
+        print()
+        extreme_values_summary = []
+        for col in self.df_scaled.columns:
+            stats = {
+                'mean': self.df_scaled[col].mean(),
+                'std': self.df_scaled[col].std(ddof=0),
+                'min': self.df_scaled[col].min(),
+                'max': self.df_scaled[col].max(),
+                'median': self.df_scaled[col].median(),
+                'skewness': self.df_scaled[col].skew()
+            }
+            self.post_stats[col] = stats
+            print(f"{col}:")
+            print(f"   Mean: {stats['mean']:>12.6f} (target: 0.000)")
+            print(f"   Std:  {stats['std']:>12.6f} (target: 1.000)")
+            print(f"   Min:  {stats['min']:>12.3f}")
+            print(f"   Max:  {stats['max']:>12.3f}")
+            print(f"   Median: {stats['median']:>10.3f}")
+            print(f"   Skewness: {stats['skewness']:>8.3f}")
+            if abs(stats['min']) > 3 or abs(stats['max']) > 3:
+                extreme_values_summary.append((col, stats['min'], stats['max']))
+                print(f"   NOTE: Contains extreme values (|z| > 3)")
+            print()
+        if extreme_values_summary:
+            print()
+            print("EXTREME VALUES SUMMARY (|z-score| > 3):")
+            print("-" * 100)
+            for col, min_val, max_val in extreme_values_summary:
+                outlier_count = ((self.df_scaled[col] < -3) | (self.df_scaled[col] > 3)).sum()
+                outlier_pct = outlier_count / len(self.df_scaled) * 100
+                print(f"   {col:<40} Range: [{min_val:>7.3f}, {max_val:>7.3f}]  Outliers: {outlier_count} ({outlier_pct:.2f}%)")
+            print()
+        self.log_action("Compute post-scaling stats", f"{len(self.df_scaled.columns)} features")
+
+    def validate_scaling(self):
+        self._print_header("STEP 5: VALIDATE SCALING RESULTS")
+        print("Validation checks:")
+        print()
+        mean_check = []
+        for col in self.df_scaled.columns:
+            mean = self.df_scaled[col].mean()
+            status = "PASS" if abs(mean) < 1e-10 else "WARNING"
+            mean_check.append((col, mean, status))
+        print("Mean ≈ 0 check:")
+        for col, mean, status in mean_check:
+            print(f"   {col:<40} mean={mean:>12.10f} ({status})")
+        print()
+        std_check = []
+        for col in self.df_scaled.columns:
+            std = self.df_scaled[col].std(ddof=0)
+            status = "PASS" if abs(std - 1.0) < 1e-10 else "WARNING"
+            std_check.append((col, std, status))
+        print("Std ≈ 1 check (using ddof=0 to match StandardScaler):")
+        for col, std, status in std_check:
+            print(f"   {col:<40} std={std:>12.10f} ({status})")
+        print()
+        missing_after = self.df_scaled.isnull().sum().sum()
+        if missing_after == 0:
+            print("Missing values after scaling: None (PASS)")
+        else:
+            print(f"Missing values after scaling: {missing_after} (FAILED)")
+        print()
+        self.log_action("Validate scaling", "Checks completed")
+
+    def apply_robust_scaling(self):
+        if not self.use_robust:
+            return False
+        self._print_header("OPTIONAL: APPLY ROBUSTSCALER")
+        if self.robust_columns is None:
+            cols = [c for c in self.df.columns if np.issubdtype(self.df[c].dtype, np.number)]
+        else:
+            cols = [c for c in self.robust_columns if c in self.df.columns and np.issubdtype(self.df[c].dtype, np.number)]
+        if not cols:
+            print("No numeric columns found for RobustScaler. Skipping robust scaling.")
+            self.log_action("Apply RobustScaler SKIPPED", "No numeric columns")
+            return False
+        print(f"Applying RobustScaler to columns: {cols}")
+        try:
+            self.robust_scaler = RobustScaler()
+            arr = self.robust_scaler.fit_transform(self.df[cols])
+            df_rob = self.df.copy()
+            df_rob[cols] = arr
+            self.df_robust_scaled = df_rob
+            joblib.dump(self.robust_scaler, self.robust_scaler_file)
+            df_rob.to_csv(self.robust_output_csv, index=False)
+            print(f"Exported robust-scaled dataset: {self.robust_output_csv}")
+            print(f"Saved robust scaler: {self.robust_scaler_file}")
+            self.log_action("Apply RobustScaler", f"Columns: {cols}")
+            self.log_action("Export robust dataset", self.robust_output_csv)
+            self.log_action("Save robust scaler", self.robust_scaler_file)
+            return True
+        except Exception as e:
+            print(f"Robust scaling failed: {e}")
+            self.log_action("Apply RobustScaler FAILED", str(e))
+            return False
+
+    def export_dataset(self):
+        self._print_header("STEP 6: EXPORT SCALED DATASET")
+        try:
+            self.df_scaled.to_csv(self.output_csv, index=False)
+            print(f"Exported scaled dataset successfully:")
+            print(f"   Path: {self.output_csv}")
+            print(f"   Shape: {self.df_scaled.shape}")
+            print(f"   Size: {os.path.getsize(self.output_csv) / 1024:.2f} KB")
+            print()
+            self.log_action("Export scaled dataset", self.output_csv)
+            return True
+        except Exception as e:
+            print(f"Export failed: {e}")
+            self.log_action("Export FAILED", str(e))
+            return False
+
+    def export_report(self):
+        self._print_header("STEP 7: EXPORT REPORT")
+        try:
+            with open(self.report_file, 'w', encoding='utf-8') as f:
+                f.write("=" * 100 + "\n")
+                f.write("PRODUCT+CHANNEL FEATURE SCALING REPORT\n")
+                f.write("=" * 100 + "\n\n")
+                f.write(f"Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+                f.write(f"Input: {self.input_path}\n")
+                f.write(f"Output: {self.output_csv}\n")
+                f.write(f"Scaling Method: StandardScaler (Z-score normalization)\n")
+                if self.use_robust:
+                    f.write(f"RobustScaler output: {self.robust_output_csv}\n")
+                f.write("\n")
+                f.write("DATASET INFORMATION:\n")
+                f.write("-" * 100 + "\n")
+                f.write(f"Shape: {self.df.shape[0]:,} rows x {self.df.shape[1]} columns\n\n")
+                f.write("PRE-SCALING STATISTICS:\n")
+                f.write("-" * 100 + "\n")
+                for col, stats in self.pre_stats.items():
+                    f.write(f"{col}:\n")
+                    for key, val in stats.items():
+                        f.write(f"   {key}: {val}\n")
+                    f.write("\n")
+                f.write("\nSCALER PARAMETERS:\n")
+                f.write("-" * 100 + "\n")
+                for i, col in enumerate(self.df.columns):
+                    f.write(f"{col}:\n")
+                    f.write(f"   mean: {self.scaler.mean_[i]}\n")
+                    f.write(f"   scale: {self.scaler.scale_[i]}\n\n")
+                f.write("\nPOST-SCALING STATISTICS:\n")
+                f.write("-" * 100 + "\n")
+                for col, stats in self.post_stats.items():
+                    f.write(f"{col}:\n")
+                    for key, val in stats.items():
+                        f.write(f"   {key}: {val}\n")
+                    f.write("\n")
+                f.write("\nPROCESSING LOG:\n")
+                f.write("-" * 100 + "\n")
+                for i, log in enumerate(self.processing_log, 1):
+                    f.write(f"{i}. [{log['timestamp']}] {log['action']}\n")
+                    if log['details']:
+                        f.write(f"   Details: {log['details']}\n")
+                f.write("\n" + "=" * 100 + "\n")
+                f.write("Report generated successfully\n")
+                f.write("=" * 100 + "\n")
+            print(f"Exported report successfully:")
+            print(f"   Path: {self.report_file}")
+            print(f"   Size: {os.path.getsize(self.report_file) / 1024:.2f} KB")
+            print()
+            self.log_action("Export report", self.report_file)
+            return True
+        except Exception as e:
+            print(f"Report export failed: {e}")
+            return False
+
+    def run_scaling(self):
+        print("\n" + "=" * 100)
+        print("PRODUCT+CHANNEL FEATURE SCALING PIPELINE".center(100))
+        print("=" * 100 + "\n")
+        start_time = datetime.now()
+        if not self.load_data():
+            print("Pipeline failed at load_data()")
+            return False
+        self.validate_data()
+        self.compute_pre_stats()
+        if not self.apply_scaling():
+            print("Pipeline failed at apply_scaling()")
+            return False
+        self.compute_post_stats()
+        self.validate_scaling()
+        if not self.export_dataset():
+            print("Pipeline failed at export_dataset()")
+            return False
+        if self.use_robust:
+            self.apply_robust_scaling()
+        try:
+            joblib.dump(self.scaler, self.scaler_file)
+            self.log_action("Save scaler", self.scaler_file)
+        except Exception:
+            pass
+        self.export_report()
+        elapsed = (datetime.now() - start_time).total_seconds()
+        print("=" * 100)
+        print("PIPELINE COMPLETED".center(100))
+        print("=" * 100)
+        print(f"Time elapsed: {elapsed:.2f} seconds")
+        print(f"Output dataset: {self.output_csv}")
+        if self.use_robust:
+            print(f"Robust dataset: {self.robust_output_csv}")
+        print(f"Output report: {self.report_file}")
+        print(f"Saved scaler: {self.scaler_file}")
+        print("=" * 100 + "\n")
+        return True
+
+
+# ================================================================================
+# CLASS 3: RFM SCALER
+# ================================================================================
+
+class RFMScaler:
+    """
+    RFM scaler with optional RobustScaler.
+    """
+    def __init__(self, input_path, output_dir, report_dir, use_robust=False, robust_columns=None):
+        self.input_path = input_path
+        self.output_dir = output_dir
+        self.report_dir = report_dir
+        self.use_robust = use_robust
+        self.robust_columns = robust_columns
+
+        os.makedirs(output_dir, exist_ok=True)
+        os.makedirs(report_dir, exist_ok=True)
+
+        self.output_csv = os.path.join(output_dir, "Customer_Behavior_RFM_scaled.csv")
+        self.report_file = os.path.join(report_dir, "RFM_Scaling_Report.log")
+        self.scaler_file = os.path.join(output_dir, "rfm_scaler.pkl")
+        self.robust_output_csv = os.path.join(output_dir, "Customer_Behavior_RFM_robust_scaled.csv")
+        self.robust_scaler_file = os.path.join(output_dir, "rfm_robust_scaler.pkl")
+
+        self.df = None
+        self.df_scaled = None
+        self.df_robust_scaled = None
+        self.scaler = StandardScaler()
+        self.robust_scaler = None
+        self.pre_stats = {}
+        self.post_stats = {}
+        self.processing_log = []
+
+    def log_action(self, action, details=""):
+        self.processing_log.append({
+            'timestamp': datetime.now().strftime('%H:%M:%S'),
+            'action': action,
+            'details': details
+        })
+
+    def _print_header(self, title, width=100, char='='):
+        print(char * width)
+        print(f"{title:^{width}}")
+        print(char * width)
+        print()
+
+    def load_data(self):
+        self._print_header("RFM SCALING - LOAD DATA")
+        try:
+            self.df = pd.read_csv(self.input_path)
+            print(f"Loaded dataset successfully")
+            print(f"   Path: {self.input_path}")
+            print(f"   Shape: {self.df.shape[0]:,} rows x {self.df.shape[1]} columns")
+            print(f"   Memory: {self.df.memory_usage(deep=True).sum() / 1024:.2f} KB")
+            print()
+            print(f"Features loaded:")
+            for i, col in enumerate(self.df.columns, 1):
+                print(f"   {i}. {col:<40} ({self.df[col].dtype})")
+            print()
+            self.log_action("Load data", f"Shape: {self.df.shape}")
+            return True
+        except Exception as e:
+            print(f"Error loading data: {e}")
+            self.log_action("Load data FAILED", str(e))
+            return False
+
+    def validate_data(self):
+        self._print_header("STEP 1: VALIDATE DATA QUALITY")
+        print("Pre-Scaling Data Quality Checks:")
+        print()
+        missing = self.df.isnull().sum()
+        if missing.sum() == 0:
+            print("   Missing values: None (PASS)")
+        else:
+            print("   Missing values detected:")
+            for col in missing[missing > 0].index:
+                print(f"      {col}: {missing[col]} ({missing[col]/len(self.df)*100:.2f}%)")
+        inf_count = np.isinf(self.df.select_dtypes(include=[np.number])).sum().sum()
+        if inf_count == 0:
+            print("   Infinite values: None (PASS)")
+        else:
+            print(f"   Infinite values: {inf_count} (WARNING)")
+        non_numeric = self.df.select_dtypes(exclude=[np.number]).columns.tolist()
+        if not non_numeric:
+            print("   Data types: All numeric (PASS)")
+        else:
+            print(f"   Non-numeric columns: {non_numeric} (WARNING)")
+        print()
+        self.log_action("Validate data", "Checks completed")
+
+    def compute_pre_stats(self):
+        self._print_header("STEP 2: PRE-SCALING STATISTICS")
+        print("Original feature statistics:")
+        print()
+        for col in self.df.columns:
+            stats = {
+                'mean': self.df[col].mean(),
+                'std': self.df[col].std(),
+                'min': self.df[col].min(),
+                'max': self.df[col].max(),
+                'median': self.df[col].median(),
+                'skewness': self.df[col].skew()
+            }
+            self.pre_stats[col] = stats
+            print(f"{col}:")
+            print(f"   Mean: {stats['mean']:>12.3f}")
+            print(f"   Std:  {stats['std']:>12.3f}")
+            print(f"   Min:  {stats['min']:>12.3f}")
+            print(f"   Max:  {stats['max']:>12.3f}")
+            print(f"   Median: {stats['median']:>10.3f}")
+            print(f"   Skewness: {stats['skewness']:>8.3f}")
+            print()
+        self.log_action("Compute pre-scaling stats", f"{len(self.df.columns)} features")
+
+    def apply_scaling(self):
+        self._print_header("STEP 3: APPLY STANDARDSCALER")
+        print("Applying Z-score normalization...")
+        print(f"   Formula: z = (x - mean) / std")
+        print(f"   Target: mean=0, std=1")
+        print()
+        try:
+            scaled_data = self.scaler.fit_transform(self.df)
+            self.df_scaled = pd.DataFrame(scaled_data, columns=self.df.columns, index=self.df.index)
+            print(f"Scaling completed successfully")
+            print(f"   Scaled shape: {self.df_scaled.shape}")
+            print()
+            print("Scaler parameters (learned from data):")
+            for i, col in enumerate(self.df.columns):
+                print(f"   {col}:")
+                print(f"      Mean (μ): {self.scaler.mean_[i]:>12.3f}")
+                print(f"      Std (σ):  {self.scaler.scale_[i]:>12.3f}")
+            print()
+            self.log_action("Apply StandardScaler", "Success")
+            return True
+        except Exception as e:
+            print(f"Scaling failed: {e}")
+            self.log_action("Apply StandardScaler FAILED", str(e))
+            return False
+
+    def compute_post_stats(self):
+        self._print_header("STEP 4: POST-SCALING STATISTICS")
+        print("Scaled feature statistics:")
+        print()
+        extreme_values_summary = []
+        for col in self.df_scaled.columns:
+            stats = {
+                'mean': self.df_scaled[col].mean(),
+                'std': self.df_scaled[col].std(ddof=0),
+                'min': self.df_scaled[col].min(),
+                'max': self.df_scaled[col].max(),
+                'median': self.df_scaled[col].median(),
+                'skewness': self.df_scaled[col].skew()
+            }
+            self.post_stats[col] = stats
+            print(f"{col}:")
+            print(f"   Mean: {stats['mean']:>12.6f} (target: 0.000)")
+            print(f"   Std:  {stats['std']:>12.6f} (target: 1.000)")
+            print(f"   Min:  {stats['min']:>12.3f}")
+            print(f"   Max:  {stats['max']:>12.3f}")
+            print(f"   Median: {stats['median']:>10.3f}")
+            print(f"   Skewness: {stats['skewness']:>8.3f}")
+            if abs(stats['min']) > 3 or abs(stats['max']) > 3:
+                extreme_values_summary.append((col, stats['min'], stats['max']))
+                print(f"   NOTE: Contains extreme values (|z| > 3)")
+            print()
+        if extreme_values_summary:
+            print()
+            print("EXTREME VALUES SUMMARY (|z-score| > 3):")
+            print("-" * 100)
+            for col, min_val, max_val in extreme_values_summary:
+                outlier_count = ((self.df_scaled[col] < -3) | (self.df_scaled[col] > 3)).sum()
+                outlier_pct = outlier_count / len(self.df_scaled) * 100
+                print(f"   {col:<40} Range: [{min_val:>7.3f}, {max_val:>7.3f}]  Outliers: {outlier_count} ({outlier_pct:.2f}%)")
+            print()
+        self.log_action("Compute post-scaling stats", f"{len(self.df_scaled.columns)} features")
+
+    def validate_scaling(self):
+        self._print_header("STEP 5: VALIDATE SCALING RESULTS")
+        print("Validation checks:")
+        print()
+        mean_check = []
+        for col in self.df_scaled.columns:
+            mean = self.df_scaled[col].mean()
+            status = "PASS" if abs(mean) < 1e-10 else "WARNING"
+            mean_check.append((col, mean, status))
+        print("Mean ≈ 0 check:")
+        for col, mean, status in mean_check:
+            print(f"   {col:<40} mean={mean:>12.10f} ({status})")
+        print()
+        std_check = []
+        for col in self.df_scaled.columns:
+            std = self.df_scaled[col].std(ddof=0)
+            status = "PASS" if abs(std - 1.0) < 1e-10 else "WARNING"
+            std_check.append((col, std, status))
+        print("Std ≈ 1 check (using ddof=0 to match StandardScaler):")
+        for col, std, status in std_check:
+            print(f"   {col:<40} std={std:>12.10f} ({status})")
+        print()
+        missing_after = self.df_scaled.isnull().sum().sum()
+        if missing_after == 0:
+            print("Missing values after scaling: None (PASS)")
+        else:
+            print(f"Missing values after scaling: {missing_after} (FAILED)")
+        print()
+        self.log_action("Validate scaling", "Checks completed")
+
+    def apply_robust_scaling(self):
+        if not self.use_robust:
+            return False
+        self._print_header("OPTIONAL: APPLY ROBUSTSCALER")
+        if self.robust_columns is None:
+            cols = [c for c in self.df.columns if np.issubdtype(self.df[c].dtype, np.number)]
+        else:
+            cols = [c for c in self.robust_columns if c in self.df.columns and np.issubdtype(self.df[c].dtype, np.number)]
+        if not cols:
+            print("No numeric columns found for RobustScaler. Skipping robust scaling.")
+            self.log_action("Apply RobustScaler SKIPPED", "No numeric columns")
+            return False
+        print(f"Applying RobustScaler to columns: {cols}")
+        try:
+            self.robust_scaler = RobustScaler()
+            arr = self.robust_scaler.fit_transform(self.df[cols])
+            df_rob = self.df.copy()
+            df_rob[cols] = arr
+            self.df_robust_scaled = df_rob
+            joblib.dump(self.robust_scaler, self.robust_scaler_file)
+            df_rob.to_csv(self.robust_output_csv, index=False)
+            print(f"Exported robust-scaled dataset: {self.robust_output_csv}")
+            print(f"Saved robust scaler: {self.robust_scaler_file}")
+            self.log_action("Apply RobustScaler", f"Columns: {cols}")
+            self.log_action("Export robust dataset", self.robust_output_csv)
+            self.log_action("Save robust scaler", self.robust_scaler_file)
+            return True
+        except Exception as e:
+            print(f"Robust scaling failed: {e}")
+            self.log_action("Apply RobustScaler FAILED", str(e))
+            return False
+
+    def export_dataset(self):
+        self._print_header("STEP 6: EXPORT SCALED DATASET")
+        try:
+            self.df_scaled.to_csv(self.output_csv, index=False)
+            print(f"Exported scaled dataset successfully:")
+            print(f"   Path: {self.output_csv}")
+            print(f"   Shape: {self.df_scaled.shape}")
+            print(f"   Size: {os.path.getsize(self.output_csv) / 1024:.2f} KB")
+            print()
+            self.log_action("Export scaled dataset", self.output_csv)
+            return True
+        except Exception as e:
+            print(f"Export failed: {e}")
+            self.log_action("Export FAILED", str(e))
+            return False
+
+    def export_report(self):
+        self._print_header("STEP 7: EXPORT REPORT")
+        try:
+            with open(self.report_file, 'w', encoding='utf-8') as f:
+                f.write("=" * 100 + "\n")
+                f.write("RFM FEATURE SCALING REPORT\n")
+                f.write("=" * 100 + "\n\n")
+                f.write(f"Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+                f.write(f"Input: {self.input_path}\n")
+                f.write(f"Output: {self.output_csv}\n")
+                f.write(f"Scaling Method: StandardScaler (Z-score normalization)\n")
+                if self.use_robust:
+                    f.write(f"RobustScaler output: {self.robust_output_csv}\n")
+                f.write("\n")
+                f.write("DATASET INFORMATION:\n")
+                f.write("-" * 100 + "\n")
+                f.write(f"Shape: {self.df.shape[0]:,} rows x {self.df.shape[1]} columns\n\n")
+                f.write("PRE-SCALING STATISTICS:\n")
+                f.write("-" * 100 + "\n")
+                for col, stats in self.pre_stats.items():
+                    f.write(f"{col}:\n")
+                    for key, val in stats.items():
+                        f.write(f"   {key}: {val}\n")
+                    f.write("\n")
+                f.write("\nSCALER PARAMETERS:\n")
+                f.write("-" * 100 + "\n")
+                for i, col in enumerate(self.df.columns):
+                    f.write(f"{col}:\n")
+                    f.write(f"   mean: {self.scaler.mean_[i]}\n")
+                    f.write(f"   scale: {self.scaler.scale_[i]}\n\n")
+                f.write("\nPOST-SCALING STATISTICS:\n")
+                f.write("-" * 100 + "\n")
+                for col, stats in self.post_stats.items():
+                    f.write(f"{col}:\n")
+                    for key, val in stats.items():
+                        f.write(f"   {key}: {val}\n")
+                    f.write("\n")
+                f.write("\nPROCESSING LOG:\n")
+                f.write("-" * 100 + "\n")
+                for i, log in enumerate(self.processing_log, 1):
+                    f.write(f"{i}. [{log['timestamp']}] {log['action']}\n")
+                    if log['details']:
+                        f.write(f"   Details: {log['details']}\n")
+                f.write("\n" + "=" * 100 + "\n")
+                f.write("Report generated successfully\n")
+                f.write("=" * 100 + "\n")
+            print(f"Exported report successfully:")
+            print(f"   Path: {self.report_file}")
+            print(f"   Size: {os.path.getsize(self.report_file) / 1024:.2f} KB")
+            print()
+            self.log_action("Export report", self.report_file)
+            return True
+        except Exception as e:
+            print(f"Report export failed: {e}")
+            return False
+
+    def run_scaling(self):
+        print("\n" + "=" * 100)
+        print("RFM FEATURE SCALING PIPELINE".center(100))
+        print("=" * 100 + "\n")
+        start_time = datetime.now()
+        if not self.load_data():
+            print("Pipeline failed at load_data()")
+            return False
+        self.validate_data()
+        self.compute_pre_stats()
+        if not self.apply_scaling():
+            print("Pipeline failed at apply_scaling()")
+            return False
+        self.compute_post_stats()
+        self.validate_scaling()
+        if not self.export_dataset():
+            print("Pipeline failed at export_dataset()")
+            return False
+        if self.use_robust:
+            self.apply_robust_scaling()
+        try:
+            joblib.dump(self.scaler, self.scaler_file)
+            self.log_action("Save scaler", self.scaler_file)
+        except Exception:
+            pass
+        self.export_report()
+        elapsed = (datetime.now() - start_time).total_seconds()
+        print("=" * 100)
+        print("PIPELINE COMPLETED".center(100))
+        print("=" * 100)
+        print(f"Time elapsed: {elapsed:.2f} seconds")
+        print(f"Output dataset: {self.output_csv}")
+        if self.use_robust:
+            print(f"Robust dataset: {self.robust_output_csv}")
+        print(f"Output report: {self.report_file}")
+        print(f"Saved scaler: {self.scaler_file}")
+        print("=" * 100 + "\n")
+        return True
+
+
+# ================================================================================
+# MAIN EXECUTION
+# ================================================================================
+
+def main():
+    """Main function - Run all scaling classes."""
+    dataset_dir = r"C:\Project\Machine_Learning\Machine_Learning\dataset"
+    report_dir = r"C:\Project\Machine_Learning\Machine_Learning\report\Feature Scaling & Selection_report"
+
+    demographic_input = os.path.join(dataset_dir, "Customer_Behavior_Demographic.csv")
+    productchannel_input = os.path.join(dataset_dir, "Customer_Behavior_ProductChannel.csv")
+    rfm_input = os.path.join(dataset_dir, "Customer_Behavior_RFM.csv")
+
+    print("\n" + "=" * 100)
+    print("MULTI-OBJECTIVE FEATURE SCALING".center(100))
+    print("=" * 100 + "\n")
+
+    # Demographic: enable robust option if desired
+    demographic_scaler = DemographicScaler(demographic_input, dataset_dir, report_dir, use_robust=True)
+    demo_success = demographic_scaler.run_scaling()
+
+    productchannel_scaler = ProductChannelScaler(productchannel_input, dataset_dir, report_dir, use_robust=True)
+    pc_success = productchannel_scaler.run_scaling()
+
+    rfm_scaler = RFMScaler(rfm_input, dataset_dir, report_dir, use_robust=True)
+    rfm_success = rfm_scaler.run_scaling()
+
+    print("\n" + "=" * 100)
+    print("FINAL SUMMARY".center(100))
+    print("=" * 100)
+    print(f"Class 1 (Demographic)    : {'SUCCESS' if demo_success else 'FAILED'}")
+    print(f"Class 2 (Product+Channel): {'SUCCESS' if pc_success else 'FAILED'}")
+    print(f"Class 3 (RFM)            : {'SUCCESS' if rfm_success else 'FAILED'}")
+    print()
+    total_success = sum([demo_success, pc_success, rfm_success])
+    print(f"TOTAL: {total_success}/3 classes completed successfully")
+    if total_success == 3:
+        print()
+        print("ALL FEATURE SCALING COMPLETED")
+        print("DATA PREPARATION STAGE FINISHED")
+        print()
+        print("Ready for next stage: K-Means Clustering")
+    print("=" * 100 + "\n")
+
+
 if __name__ == "__main__":
     main()

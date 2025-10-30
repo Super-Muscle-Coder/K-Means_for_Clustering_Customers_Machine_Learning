@@ -50,7 +50,7 @@ class DatasetComparator:
         os.makedirs(self.output_dir, exist_ok=True)
         
         # Xuất File báo cáo
-        self.report_file = self.output_dir / "Stage1_Comparison_Report.txt"
+        self.report_file = self.output_dir / "Stage1_Comparison_Report.log"
         # Xóa báo cáo cũ nếu có
         if os.path.exists(self.report_file):
             os.remove(self.report_file)
@@ -72,7 +72,7 @@ class DatasetComparator:
     def load_data(self):
         """Tải cả dataset gốc và dataset đã làm sạch."""
         try:
-            self.print_and_log("BÁO CÁO SO SÁNH DATASET TRƯỚC VÀ SAU KHI LÀM SẠCH (STAGE 1)", bold=True)
+            self.print_and_log("BÁO CÁO SO SÁNH DATASET TRƯỚC VÀ SAU KHI LÀM SẠCH", bold=True)
             
             # Tải dataset gốc
             self.print_and_log(f"Đọc dataset gốc từ: {self.original_dataset_path}")
@@ -306,7 +306,7 @@ class DatasetComparator:
             ('MntFruits', 'CHI TIÊU TRÁI CÂY', 96),
             ('MntSweetProducts', 'CHI TIÊU ĐỒ NGỌT', 105),
             ('MntGoldProds', 'CHI TIÊU VÀNG BẠC', 49),
-            ('MntFishProducts', 'CHI TIÊU HẢI SẢN', 72),  # ← Đây là biến thứ 7
+            ('MntFishProducts', 'CHI TIÊU HẢI SẢN', 72),
             ('NumWebPurchases', 'MUA HÀNG ONLINE', 4),
             ('NumCatalogPurchases', 'MUA QUA CATALOG', 4),
             ('NumDealsPurchases', 'MUA KHUYẾN MÃI', 24),
@@ -319,10 +319,9 @@ class DatasetComparator:
 
         self.print_and_log("\nTạo biểu đồ so sánh phân phối")
 
-        # ✅ ĐẢM BẢO idx bắt đầu từ 1
-        for idx, (var, var_vn, outlier_count) in enumerate(outlier_vars, 1):  # ← START=1
+        for idx, (var, var_vn, outlier_count) in enumerate(outlier_vars, 1): 
             if var in self.original_data.columns and var in self.cleaned_data.columns:
-                print(f"DEBUG: Creating chart for {var} with idx={idx}")  # ← DEBUG
+                print(f"DEBUG: Creating chart for {var} with idx={idx}")  
                 self._create_outlier_distribution_chart(var, var_vn, outlier_count, idx)
 
         self.print_and_log(f"\n  Đã tạo {len(outlier_vars)} biểu đồ phân phối outliers")
@@ -336,7 +335,7 @@ class DatasetComparator:
         # =====================================
         # PHẦN 1: ORDINAL ENCODING (Education)
         # =====================================
-        self.print_and_log("\n4.1. ORDINAL ENCODING - Education (Có thứ bậc)")
+        self.print_and_log("\n4.1. ORDINAL ENCODING - Education")
     
         if 'Education_ord' in self.cleaned_data.columns and 'Education' in self.cleaned_data.columns:
             mapping = self.cleaned_data.groupby('Education')['Education_ord'].first().sort_values()
@@ -351,8 +350,8 @@ class DatasetComparator:
                 self.print_and_log(f"{edu:<15} | {ord_val:<8} | {count:<10} | {pct:.1f}%")
         
             self.print_and_log("\nPhương pháp: Ordinal Encoding")
-            self.print_and_log("- Lý do: Education có thứ bậc rõ ràng (Basic < Master < PhD)")
-            self.print_and_log("- Kết quả: 1 cột mới (Education_ord)")
+            self.print_and_log("- Lý do   : Education có thứ bậc rõ ràng")
+            self.print_and_log("- Kết quả : 1 cột mới (Education_ord)")
         
             # Tạo biểu đồ Ordinal
             self._create_ordinal_encoding_chart()
@@ -360,7 +359,7 @@ class DatasetComparator:
         # =====================================
         # PHẦN 2: ONE-HOT ENCODING (Marital_Status)
         # =====================================
-        self.print_and_log("\n4.2. ONE-HOT ENCODING - Marital_Status (Không thứ bậc)")
+        self.print_and_log("\n4.2. ONE-HOT ENCODING - Marital_Status")
     
         dummy_cols = [col for col in self.cleaned_data.columns if col.startswith('Marital_') and col != 'Marital_Status_Grouped']
     
@@ -379,8 +378,8 @@ class DatasetComparator:
                     self.print_and_log(f"{col:<25} | {count:<8} | {pct:.2f}%")
         
             self.print_and_log("\nPhương pháp: One-Hot Encoding")
-            self.print_and_log("- Lý do: Marital_Status KHÔNG có thứ bậc")
-            self.print_and_log("- Kết quả: 6 cột dummy (binary 0/1)")
+            self.print_and_log("- Lý do   : Marital_Status không có thứ bậc")
+            self.print_and_log("- Kết quả : 6 cột dummy (binary 0/1)")
         
             # Tạo biểu đồ One-hot
             self._create_onehot_encoding_chart(dummy_cols)
@@ -450,7 +449,7 @@ class DatasetComparator:
                     self.print_and_log(f"- Năm sinh cũ (< 1900): {orig_old} → {clean_old} ({orig_old-clean_old:+d})")
                 
 # ==================================================================================================================
-
+# HÀM TỔNG KẾT CUỐI CÙNG
     def summarize_changes(self):
         """Tổng kết các thay đổi từ data wrangling."""
         self.print_and_log("\n6. TÓM TẮT CÁC THAY ĐỔI", bold=True)
@@ -469,7 +468,7 @@ class DatasetComparator:
         self.print_and_log(f"- Dataset đã làm sạch: {clean_rows:,} dòng × {clean_cols} cột")
         self.print_and_log(f"- Đã loại bỏ: {rows_removed:,} dòng ({rows_removed_pct:.2f}%)")
         
-        # Tóm tắt các thay đổi chính (từ Data_Cleaning_report.txt)
+        # Tóm tắt các thay đổi chính
         self.print_and_log("\nCác thay đổi chính đã thực hiện:")
         self.print_and_log("1. Tách 24 dòng có missing values thành mini dataset")
         self.print_and_log("2. Loại bỏ 182 dòng trùng lặp feature")
@@ -489,13 +488,13 @@ class DatasetComparator:
         clean_dups = self.cleaned_data.duplicated().sum()
         
         self.print_and_log("\nCải thiện chất lượng dữ liệu:")
-        self.print_and_log(f"- Missing values: {orig_missing:,} → {clean_missing:,} ({orig_missing-clean_missing:+,})")
+        self.print_and_log(f"- Missing values : {orig_missing:,} → {clean_missing:,} ({orig_missing-clean_missing:+,})")
         self.print_and_log(f"- Duplicated rows: {orig_dups:,} → {clean_dups:,} ({orig_dups-clean_dups:+,})")
         
         # Tạo biểu đồ tổng hợp
         self._create_summary_improvement_chart()
 # ==================================================================================================================
-
+# BIỂU ĐỒ SO SÁNH CƠ BẢN
     def _create_basic_comparison_charts(self):
         """Tạo các biểu đồ so sánh cơ bản."""
         try:
@@ -685,7 +684,7 @@ class DatasetComparator:
             self.print_and_log(f"  Chi tiết: {traceback.format_exc()}")
 
 # ==================================================================================================================
-
+# BIỂU ĐỒ ONE-HOT ENCODING
     def _create_onehot_encoding_chart(self, dummy_cols):
         """Vẽ biểu đồ cho One-Hot Encoding (Marital_Status)."""
         try:
@@ -728,7 +727,7 @@ class DatasetComparator:
         except Exception as e:
             self.print_and_log(f"  Lỗi vẽ biểu đồ One-Hot: {e}")
 # ==================================================================================================================
-
+# BIỂU ĐỒ CHUẨN HÓA CATEGORICAL
     def _create_categorical_standardization_chart(self):
         """Tạo biểu đồ so sánh phân phối của biến Marital_Status trước và sau khi chuẩn hóa."""
         try:
@@ -789,7 +788,7 @@ class DatasetComparator:
         except Exception as e:
             self.print_and_log(f"  Lỗi khi tạo biểu đồ chuẩn hóa Marital_Status: {e}")
 # ==================================================================================================================
-
+# BIỂU ĐỒ ORDINAL ENCODING
     def _create_ordinal_encoding_chart(self):
         """Tạo biểu đồ cho ordinal encoding (Education)."""
         try:
@@ -844,7 +843,7 @@ class DatasetComparator:
         except Exception as e:
             self.print_and_log(f"  Lỗi khi tạo biểu đồ ordinal encoding: {e}")
 # ==================================================================================================================
-
+# TẠO BIỂU ĐỒ BIẾN DUMMY
     def _create_dummy_vars_chart(self, dummy_cols):
         """Tạo biểu đồ cho các biến dummy."""
         try:
@@ -889,7 +888,7 @@ class DatasetComparator:
         except Exception as e:
             self.print_and_log(f"  Lỗi khi tạo biểu đồ phân phối biến dummy: {e}")
 # ==================================================================================================================
-    def _create_outlier_distribution_chart(self, var, var_vn, outlier_count, idx):  # ← THÊM idx
+    def _create_outlier_distribution_chart(self, var, var_vn, outlier_count, idx):  
         """Vẽ biểu đồ so sánh phân phối trước/sau loại bỏ outliers."""
         try:
             orig_data = self.original_data[var].dropna()
@@ -1048,7 +1047,7 @@ class DatasetComparator:
             orig_values = [
                 self.original_data.shape[0],
                 self.original_data.isnull().sum().sum(),
-                orig_feature_dups,  # ← SỬ DỤNG feature duplicates
+                orig_feature_dups,  
                 self.original_data.shape[1]
             ]
         
@@ -1093,7 +1092,7 @@ class DatasetComparator:
                     else:
                         text = f'{int(height)}'
                 
-                    # ✅ CHỈ HIỂN THỊ NẾU height > 0
+                    # CHỈ HIỂN THỊ NẾU height > 0
                     if height > 0:
                         ax.annotate(text,
                                   xy=(rect.get_x() + rect.get_width()/2, height),

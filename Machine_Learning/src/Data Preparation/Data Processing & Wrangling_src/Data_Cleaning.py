@@ -98,7 +98,7 @@ class DataCleaning:
     
         os.makedirs(output_dir, exist_ok=True)
     
-        report_file = os.path.join(output_dir, f"Data_Cleaning_report.txt")
+        report_file = os.path.join(output_dir, f"Data_Cleaning_report.log")
     
         try:
             with open(report_file, 'w', encoding='utf-8') as f:
@@ -1397,7 +1397,8 @@ TỔNG KẾT:
         Loại bỏ các cột không phù hợp cho phân tích nhân khẩu học và lưu trữ chúng trong bộ nhớ:
         - Binary features: AcceptedCmp1-5, Complain, Response (cho campaign analysis)
         - Identifiers/Constants: ID, Z_CostContact, Z_Revenue
-    
+        - Redundant categorical: Education, Marital_Status, Marital_Status_Grouped (đã có encoded versions)
+
         Returns:
             dict: Thông tin về các cột đã loại bỏ
         """
@@ -1411,37 +1412,45 @@ TỔNG KẾT:
         # =====================================
         # BƯỚC 1: XÁC ĐỊNH CÁC CỘT CẦN LOẠI BỎ
         # =====================================
-    
+
         # Binary campaign features - để dành cho campaign analysis
         binary_features = [
             'AcceptedCmp1', 'AcceptedCmp2', 'AcceptedCmp3', 'AcceptedCmp4', 'AcceptedCmp5',
             'Complain', 'Response'
         ]
-    
+
         # Identifier và constant features - hằng số và biến định danh, không có giá trị phân tích
         identifier_constant_features = [
             'ID', 'Z_CostContact', 'Z_Revenue'
         ]
     
+        # Redundant categorical features - đã có encoded versions (Education_ord, Marital_* dummies)
+        redundant_categorical_features = [
+            'Education',              # Đã có Education_ord
+            'Marital_Status',         # Đã có Marital_* dummies
+            'Marital_Status_Grouped'  # Đã có Marital_* dummies
+        ]
+
         # Tổng hợp tất cả cột cần loại bỏ
-        columns_to_remove = binary_features + identifier_constant_features
-    
+        columns_to_remove = binary_features + identifier_constant_features + redundant_categorical_features
+
         # Lọc chỉ các cột thực tế tồn tại trong dataset
         existing_columns_to_remove = [col for col in columns_to_remove if col in self.cleaned_data.columns]
-    
+
         if not existing_columns_to_remove:
             print("Không có cột nào cần loại bỏ.")
             return {"status": "no_columns_removed", "removed_columns": []}
-    
+
         print(f"\nCác cột sẽ được loại bỏ khỏi dataset chính:")
         print("-" * 60)
-    
+
         removed_info = {}
-    
+
         # Phân loại và hiển thị thông tin các cột sẽ loại bỏ
         binary_to_remove = [col for col in binary_features if col in existing_columns_to_remove]
         identifier_to_remove = [col for col in identifier_constant_features if col in existing_columns_to_remove]
-    
+        redundant_to_remove = [col for col in redundant_categorical_features if col in existing_columns_to_remove]
+
         if binary_to_remove:
             print("BINARY AND CAMPAIGN FEATURES (dành cho campaign analysis):")
             for col in binary_to_remove:
@@ -1453,7 +1462,7 @@ TỔNG KẾT:
                     'unique_values': sorted(unique_vals.tolist()),
                     'purpose': 'campaign_analysis'
                 }
-    
+
         if identifier_to_remove:
             print("\nIDENTIFIER AND CONSTANT FEATURES (hằng số và biến định danh, không có giá trị phân tích):")
             for col in identifier_to_remove:
@@ -1466,20 +1475,32 @@ TỔNG KẾT:
                     'purpose': 'identifier_or_constant'
                 }
     
+        if redundant_to_remove:
+            print("\nREDUNDANT CATEGORICAL FEATURES (đã có encoded versions):")
+            for col in redundant_to_remove:
+                unique_vals = self.cleaned_data[col].unique()
+                unique_count = len(unique_vals)
+                print(f"  - {col:<20}: {unique_count} unique values")
+                removed_info[col] = {
+                    'type': 'redundant_categorical',
+                    'unique_values': unique_vals.tolist() if unique_count <= 10 else f"{unique_count} unique values",
+                    'purpose': 'already_encoded'
+                }
+
         print("-" * 60)
 
         # =========================================
         # BƯỚC 2: TẠO ARCHIVED DATASET TRONG BỘ NHỚ
         # =========================================
         print(f"\nTẠO ARCHIVED DATASET")
-    
+
         # Tạo dataset chứa các cột bị loại bỏ (bao gồm cả ID để mapping)
         archived_columns = existing_columns_to_remove.copy()
         if 'ID' not in archived_columns and 'ID' in self.cleaned_data.columns:
             archived_columns.insert(0, 'ID')  # Thêm ID vào đầu để mapping
-    
+
         self.archived_features = self.cleaned_data[archived_columns].copy()
-    
+
         print(f"- Archived dataset: {self.archived_features.shape}")
         print(f"  Columns: {list(self.archived_features.columns)}")
 
@@ -1487,15 +1508,15 @@ TỔNG KẾT:
         # BƯỚC 3: LOẠI BỎ CÁC CỘT KHỎI DATASET CHÍNH
         # ==========================================
         print(f"\nLOẠI BỎ CÁC CỘT KHỎI DATASET CHÍNH")
-    
+
         original_shape = self.cleaned_data.shape
-    
+
         # Loại bỏ các cột (giữ lại ID nếu nó không trong danh sách loại bỏ ban đầu)
         columns_to_drop = [col for col in existing_columns_to_remove if col != 'ID' or 'ID' in identifier_constant_features]
-    
+
         # Lưu danh sách các cột bị drop
         self.encoders['archived_columns'] = columns_to_drop
-    
+
         # Thực hiện drop
         self.cleaned_data = self.cleaned_data.drop(columns=columns_to_drop)
 
@@ -1516,7 +1537,7 @@ TỔNG KẾT:
             print(f"  - Không có dòng trùng lặp hoàn toàn")
 
         new_shape = self.cleaned_data.shape
-    
+
         print(f"Dataset chính sau khi loại bỏ:")
         print(f"  - Shape      : {original_shape} → {new_shape}")
         print(f"  - Đã loại bỏ : {len(columns_to_drop)} cột")
@@ -1542,9 +1563,9 @@ TỔNG KẾT:
         # =====================================
         # BƯỚC 5: GHI LOG VÀ TRẢ VỀ KẾT QUẢ
         # =====================================
-        self.log_action("Loại bỏ features không phục vụ nhân khẩu học", 
+        self.log_action("Loại bỏ features không phục vụ nhân khẩu học + redundant categorical", 
                        f"Đã loại bỏ {len(columns_to_drop)} cột và lưu vào archived dataset")
-    
+
         result = {
             'status': 'success',
             'original_shape': original_shape,
@@ -1553,9 +1574,10 @@ TỔNG KẾT:
             'remaining_columns': remaining_cols,
             'binary_features_removed': binary_to_remove,
             'identifier_features_removed': identifier_to_remove,
+            'redundant_categorical_removed': redundant_to_remove,
             'removed_info': removed_info
         }
-    
+
         print(f"\nHoàn thành loại bỏ các đặc trưng không cần thiết\n")        
         return result
 
