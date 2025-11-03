@@ -505,27 +505,27 @@ class DemographicFeatureEngineering:
         
         start_time = datetime.now()
         
-        # Step 1: Load data
+        # Bước 1: Load data
         if not self.load_data():
             print("Pipeline failed at load_data()")
             return False
         
-        # Step 2: Create derived features
+        # Bước 2: Create derived features
         self.create_age_feature()
         self.create_total_children_feature()
         self.create_income_per_family_member()
         self.create_marital_encoded()
         
-        # Step 3: Transform skewed features
+        # Bước 3: Transform skewed features
         self.transform_skewed_features()
         
-        # Step 4: Select final features
+        # Bước 4: Select final features
         self.select_final_features()
         
-        # Step 5: Validate
+        # Bước 5: Validate
         self.validate_features()
         
-        # Step 6: Export
+        # Bước 6: Export
         self.export_dataset()
         self.export_report()
         
@@ -1094,26 +1094,26 @@ class ProductChannelFeatureEngineering:
         
         start_time = datetime.now()
         
-        # Step 1: Load data
+        # Bước 1: Load data
         if not self.load_data():
             print("Pipeline failed at load_data()")
             return False
         
-        # Step 2-3: Create base features
+        # Bước 2-3: Create base features
         self.create_total_spent()
         self.create_total_purchases()
         
-        # Step 4-5: Create ratios
+        # Bước 4-5: Create ratios
         self.create_product_ratios()
         self.create_channel_ratios()
         
-        # Step 6: Select final features
+        # Bước 6: Select final features
         self.select_final_features()
         
-        # Step 7: Validate
+        # Bước 7: Validate
         self.validate_features()
         
-        # Step 8: Export
+        # Bước 8: Export
         self.export_dataset()
         self.export_report()
         
