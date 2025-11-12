@@ -1,0 +1,104 @@
+====================================================================================================
+PRODUCT+CHANNEL FEATURE ENGINEERING REPORT (v5 - AUTO-DETECT TRANSFORM + AUTO PCA)
+====================================================================================================
+
+Generated : 2025-11-11 09:10:17
+Input     : C:\Project\Machine_Learning\Machine_Learning\dataset\Customer_Behavior_cleaned.csv
+Output    : C:\Project\Machine_Learning\Machine_Learning\dataset\Customer_Behavior_ProductChannel.csv
+Strategy  : Volume-Based + Auto-Detect Transform + Auto-Detect PCA
+
+IMPROVEMENTS (v5):
+----------------------------------------------------------------------------------------------------
+OK: Auto-detect transform method (Box-Cox for positive data, Yeo-Johnson for data with zeros)
+OK: Transformed Total_Spent (auto-detected method)
+OK: DROPPED AvgPerPurchase_Transformed (correlation 0.966 with Total_Spent)
+OK: Dropped Product_Entropy (correlation -0.98 with HHI)
+OK: Auto-detect PCA for highly correlated pairs (|r| >= 0.7)
+OK: Applied PCA to 1 feature pair(s)
+OK: Reduced clustering features from 5 to 4 (if PCA applied)
+OK: Better independence between clustering features
+
+TRANSFORM METHOD DECISION LOGIC:
+----------------------------------------------------------------------------------------------------
+- Box-Cox: Used when min > 0 (data purely positive)
+- Yeo-Johnson: Used when min <= 0 (data contains zeros or negatives)
+- Auto-detection: Applied independently to each feature
+- Threshold: Transform only if |skewness| > 0.8
+
+PCA REDUCTION LOGIC:
+----------------------------------------------------------------------------------------------------
+- Auto-detect high correlation pairs: |r| >= 0.7
+- Apply PCA(n_components=1) to composite features
+- Result: n_components=1 captures 90%+ variance from 2 correlated features
+- Benefit: Eliminates multicollinearity, improves K-Means clustering
+
+PCA REDUCTIONS APPLIED:
+----------------------------------------------------------------------------------------------------
+1. PC1_Total_TotalPurchases
+   Source features: Total_Spent_Transformed x TotalPurchases
+   Correlation: 0.874
+   Variance explained: 93.69%
+   Formula: 0.7071×Total_Spent_Transformed + 0.7071×TotalPurchases
+
+FINAL FEATURES (12 columns):
+----------------------------------------------------------------------------------------------------
+
+CLUSTERING FEATURES:
+1. Product_HHI
+
+2. Store_Preference
+
+3. Web_Engagement
+
+4. PC1_Total_TotalPurchases
+   [PCA Composite Feature]
+
+REFERENCE FEATURES (post-hoc):
+1. Wine_Preference (not for clustering)
+2. Meat_Preference (not for clustering)
+3. Fish_Preference (not for clustering)
+4. Fruit_Preference (not for clustering)
+5. Sweet_Preference (not for clustering)
+6. Gold_Preference (not for clustering)
+7. Dominant_Product (not for clustering)
+8. Top_Product_Share (not for clustering)
+
+CORRELATION ANALYSIS:
+----------------------------------------------------------------------------------------------------
+Max correlation : 0.402
+Between         : Web_Engagement ↔ PC1_Total_TotalPurchases
+
+PROCESSING LOG:
+----------------------------------------------------------------------------------------------------
+  1. [09:10:17] Load data
+     Shape: (2010, 24)
+  2. [09:10:17] Create Total_Spent
+     Mean: 608, Skew: 0.857, Zero: 0
+  3. [09:10:17] Transform Total_Spent
+     Box-Cox: Skew 0.857 -> -0.126
+  4. [09:10:17] Create TotalPurchases
+     Mean: 14.9, Skew: 0.249
+  5. [09:10:17] Create product preferences
+     6 ratios (reference)
+  6. [09:10:17] Create Product_HHI
+     Mean: 0.391, Skew: 1.053
+  7. [09:10:17] Create Dominant_Product
+     For labeling
+  8. [09:10:17] Create Store_Preference
+     Mean: 0.408, Skew: 0.059
+  9. [09:10:17] Create Web_Engagement
+     Mean: 5.3, Skew: 0.279
+ 10. [09:10:17] Apply PCA
+     PC1_Total_TotalPurchases: Variance=93.69%, Corr(Total_Spent_Transformed, TotalPurchases)=0.874
+ 11. [09:10:17] PCA Complete
+     Applied to 1 pair(s)
+ 12. [09:10:17] Select features
+     12 (4 clustering + 8 ref)
+ 13. [09:10:17] Validate
+     Completed
+ 14. [09:10:17] Export dataset
+     C:\Project\Machine_Learning\Machine_Learning\dataset\Customer_Behavior_ProductChannel.csv
+
+====================================================================================================
+END OF REPORT
+====================================================================================================

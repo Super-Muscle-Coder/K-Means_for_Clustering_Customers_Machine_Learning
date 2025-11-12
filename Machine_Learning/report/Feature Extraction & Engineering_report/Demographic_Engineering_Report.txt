@@ -1,0 +1,131 @@
+====================================================================================================
+DEMOGRAPHIC FEATURE ENGINEERING REPORT (IMPROVED - OPTION C)
+====================================================================================================
+
+Generated       : 2025-11-11 09:10:14
+Input           : C:\Project\Machine_Learning\Machine_Learning\dataset\Customer_Behavior_cleaned.csv
+Output          : C:\Project\Machine_Learning\Machine_Learning\dataset\Customer_Behavior_Demographic.csv
+Strategy        : Option C (Exclude Ordinal/Nominal from Clustering)
+
+DESIGN PHILOSOPHY:
+----------------------------------------------------------------------------------------------------
+- Use ONLY pure continuous features for clustering (Age, Income, Dependency_Ratio)
+- Exclude Education_ord (ordinal) from clustering to avoid dominance issue
+- Exclude Life_Stage (categorical) from clustering
+- Save Education_ord and Life_Stage for POST-HOC ANALYSIS
+- Auto-detect transform method: Box-Cox for positive data, Yeo-Johnson for data with zeros
+- Transform only if |skewness| > 0.5 (tighter threshold for better symmetry)
+- NO SCALING in this step (handled by Feature_Scaling.py)
+
+TRANSFORM METHOD DECISION LOGIC:
+----------------------------------------------------------------------------------------------------
+- Box-Cox: Used when min > 0 (data purely positive)
+- Yeo-Johnson: Used when min <= 0 (data contains zeros or negatives)
+- Auto-detection: Applied to each feature independently
+- Threshold: Transform only if |skewness| > 0.5
+
+FINAL FEATURES (5 columns):
+----------------------------------------------------------------------------------------------------
+
+CLUSTERING FEATURES (3 - pure continuous):
+1. Age
+   Original statistics:
+      min             : 18.0
+      max             : 100.0
+      mean            : 45.15273631840796
+      median          : 44.0
+      std             : 11.731060266986944
+      skewness        : 0.13711056183219292
+   Transformation applied:
+      original_skew        : 0.13711056183219292
+      new_skew             : 0.13711056183219292
+      method               : NO_TRANSFORM
+
+2. Income
+   Transformation applied:
+      original_skew        : 0.3667154604604394
+      new_skew             : 0.3667154604604394
+      method               : NO_TRANSFORM
+
+3. Dependency_Ratio
+   Original statistics:
+      min             : 0.0
+      max             : 4.74326815735702
+      mean            : 0.8624849897905801
+      median          : 0.5754071851631697
+      std             : 0.9475102003364219
+      skewness        : 1.7348481581226671
+      variance        : 0.8977755797415663
+   Transformation applied:
+      method               : Yeo-Johnson
+      lambda               : -0.6259135209774677
+      original_skew        : 1.7348481581226671
+      new_skew             : 0.088572327657324
+      improvement          : 1.646275830465343
+      has_zero             : True
+      zero_count           : 568
+      has_negative         : False
+   Final statistics (after transform):
+      min             : 0.0
+      max             : 1.062709215646608
+      mean            : 0.4003604025202049
+      median          : 0.3955807489554952
+      std             : 0.30552635916608006
+      skewness        : 0.088572327657324
+
+POST-HOC FEATURES (2 - for analysis after clustering):
+4. Education_ord
+   Type            : Ordinal (0-4)
+   Purpose         : Post-hoc education distribution analysis
+   Not used in     : K-Means distance calculation
+
+5. Life_Stage
+   Type            : Categorical (0-4)
+   Purpose         : Post-hoc life stage distribution analysis
+   Not used in     : K-Means distance calculation
+   Distribution    : {0: 451, 1: 525, 2: 321, 3: 223, 4: 490}
+   Stage names     : ['Young Single', 'Young Family', 'Mature Family', 'Empty Nest', 'Single Parent']
+
+CORRELATION ANALYSIS (CLUSTERING FEATURES ONLY):
+----------------------------------------------------------------------------------------------------
+Maximum correlation (off-diagonal) : 0.601
+
+DATASET STATISTICS:
+----------------------------------------------------------------------------------------------------
+Original dataset shape  : 2,010 rows x 30 columns
+Final dataset shape     : 2,010 rows x 5 columns
+Clustering features     : 3 (Age, Income, Dependency_Ratio)
+Post-hoc features       : 2 (Education_ord, Life_Stage)
+
+PROCESSING LOG:
+----------------------------------------------------------------------------------------------------
+  1. [09:10:14] Load data
+     Details: Shape: (2010, 24)
+  2. [09:10:14] Create Age
+     Details: Range: [18, 100], Skew: 0.137
+  3. [09:10:14] Create TotalChildren
+     Details: Distribution: {0: 568, 1: 1021, 2: 376, 3: 45}
+  4. [09:10:14] Create Income_per_Family_Member
+     Details: Mean: 19,629, Skew: 1.003
+  5. [09:10:14] Create Marital_Encoded
+     Details: Distribution: {0: 721, 1: 508, 2: 781}
+  6. [09:10:14] Create Life_Stage
+     Details: Distribution: {0: 451, 1: 525, 2: 321, 3: 223, 4: 490} (POST-HOC)
+  7. [09:10:14] Create Dependency_Ratio
+     Details: Mean: 0.862, Skew: 1.735, Zero: 568
+  8. [09:10:14] Transform Age
+     Details: No transform needed
+  9. [09:10:14] Transform Income
+     Details: No transform needed
+ 10. [09:10:14] Transform Dependency_Ratio
+     Details: Yeo-Johnson: Skew 1.735 -> 0.089
+ 11. [09:10:14] Select final features
+     Details: 5 features (3 clustering + 2 post-hoc)
+ 12. [09:10:14] Validate features
+     Details: All checks completed
+ 13. [09:10:14] Export dataset
+     Details: C:\Project\Machine_Learning\Machine_Learning\dataset\Customer_Behavior_Demographic.csv
+
+====================================================================================================
+END OF REPORT
+====================================================================================================

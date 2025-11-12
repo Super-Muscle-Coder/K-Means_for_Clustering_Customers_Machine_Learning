@@ -1,0 +1,2 @@
+dataset_name,dataset_type,chosen_k,inertia,silhouette,calinski_harabasz,davies_bouldin,cluster_balance_ratio,compactness_separation_score,misclassified_count,misclassified_percent,cluster_sizes,total_points,clustering_features_used
+Standard Only,StandardOnly,3,4507.365577337021,0.30118966939349784,786.4901531321334,1.2531140168189396,0.6805555555555556,4.015153602970809,78,3.880597014925373,"[539, 792, 679]",2010,"['Product_HHI', 'Store_Preference', 'Web_Engagement', 'PC1_Total_TotalPurchases']"

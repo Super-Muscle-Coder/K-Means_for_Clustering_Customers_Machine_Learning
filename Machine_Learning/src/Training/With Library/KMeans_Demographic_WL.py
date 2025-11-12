@@ -1,33 +1,23 @@
 ﻿"""
-Workflow: K-Means Clustering
+================================================================================
+PHÂN CỤM K-MEANS - DEMOGRAPHIC CLUSTERING (DUAL DATASET COMPARISON)
+================================================================================
 
-Quy trình:
-1. Load dữ liệu đã chuẩn hóa (feature-scaled) từ CSV.
-2. Kiểm tra chất lượng dữ liệu (missing, dtype, thống kê cơ bản).
-3. Tính toán thống kê trước khi phân cụm (mean/std/min/max).
-4. Tìm K tối ưu bằng Elbow method + Silhouette score.
-   - Elbow: quan sát inertia (within-cluster sum-of-squares).
-   - Silhouette: đánh giá nội tại ([-1,1]), giá trị lớn hơn thể hiện phân cụm tốt.
-   - Kết hợp để chọn K cân bằng giữa compactness và separation.
-5. Tính toán Gap Statistic để bổ sung quyết định chọn K.
-6. Khởi tạo KMeans với init='k-means++' và chạy phân cụm.
-7. Đánh giá nội tại sau khi chạy: inertia, silhouette score, cluster sizes, centroid.
-8. Xuất các biểu đồ: Elbow, Silhouette (score vs K), Gap Statistic, Heatmap (feature vs cluster centroid),
-   Scatter (2D bằng PCA), Cluster Centroid Plot (centroid values theo feature).
-9. Lưu kết quả nhãn (cluster labels) nếu cần, và xuất báo cáo log chi tiết.
+Quy trình thực hiện:
+1. Load CẢ 2 dữ liệu đã chuẩn hóa:
+   - Customer_Behavior_Demographic_Standard_scaled.csv (StandardScaler ONLY)
+   - Customer_Behavior_Demographic_Robust_scaled.csv (RobustScaler ONLY)
+2. Chạy K-Means độc lập trên từng dataset
+3. So sánh hiệu quả giữa 2 phương pháp scaling
+4. Xuất báo cáo tổng hợp + biểu đồ so sánh
 
-Kiến thức cần biết về K-Means:
-- K-Means tối ưu hóa inertia (tổng bình phương khoảng cách điểm tới tâm cụm).
-- K cần được chọn trước (không có nhãn).
-- Do dùng khoảng cách Euclidean, dữ liệu cần được scaling trước.
-- K-Means++ giúp khởi tạo tâm cụm tốt hơn, giảm khả năng rơi vào cực trị địa phương.
-- Đánh giá nội tại: inertia, silhouette, calinski_harabasz, davies_bouldin. Ở đây dùng silhouette + inertia + gap statistic.
-
-Tiêu chí đánh giá (internal only):
-- Silhouette score trung bình càng cao càng tốt.
-- Inertia càng thấp càng tốt nhưng phải so sánh theo K.
-- Gap Statistic: K tối ưu khi gap(k) >= gap(k+1) - s_{k+1} (theo Tibshirani).
-- Kết hợp các chỉ số để đưa ra K hợp lý.
+Các chỉ số đánh giá:
+- Inertia: Tổng bình phương khoảng cách đến tâm cụm (càng thấp càng tốt)
+- Silhouette Score: Đo độ tách biệt giữa các cụm [-1, 1] (càng cao càng tốt)
+- Calinski-Harabasz: Tỷ lệ phương sai giữa các cụm (càng cao càng tốt)
+- Davies-Bouldin: Độ tương đồng giữa các cụm (càng thấp càng tốt)
+- Gap Statistic: So sánh với phân bố ngẫu nhiên (chọn K khi gap cao nhất)
+================================================================================
 """
 
 import os
@@ -36,355 +26,1031 @@ import logging
 from datetime import datetime
 import numpy as np
 import pandas as pd
-from sklearn.cluster import KMeans # Import thư viện K-Means 
-from sklearn.metrics import silhouette_score, calinski_harabasz_score, davies_bouldin_score
+from sklearn.cluster import KMeans
+from sklearn.metrics import silhouette_score, calinski_harabasz_score, davies_bouldin_score, silhouette_samples
 from sklearn.decomposition import PCA
 import matplotlib.pyplot as plt
 import seaborn as sns
-from sklearn.utils import resample
-import math
+from scipy.spatial.distance import pdist, squareform
+import warnings
 
-# -----------------------------
-# Cấu hình (chỉnh đường dẫn tương ứng trước khi chạy)
-# -----------------------------
-# Thay 1 biến dưới đây tương ứng cho dataset Demographic/ProductChannel/RFM trước khi chạy.
-dataset_path = r"C:\Project\Machine_Learning\Machine_Learning\dataset\Customer_Behavior_Demographic_robust_scaled.csv"
+warnings.filterwarnings('ignore')
 
-# Thư mục lưu biểu đồ (tùy dataset, set tương ứng)
-graph_output_dir = r"C:\Project\Machine_Learning\Machine_Learning\graph\Training\With Library\Demographic_WL\\"
+# ================================================================================
+# CẤU HÌNH ĐƯỜNG DẪN
+# ================================================================================
+BASE_DIR = r"C:\Project\Machine_Learning\Machine_Learning"
 
-# Thư mục lưu report log
-report_dir = r"C:\Project\Machine_Learning\Machine_Learning\report\Training\With Library\\"
-# Tên file log (tự động thêm timestamp)
-timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-log_file = os.path.join(report_dir, f"Demographic.log") 
+# Input datasets (CẢ 2 VERSIONS - INDEPENDENT SCALING)
+# Dataset 1: StandardScaler ONLY
+DATASET_STANDARD_ONLY = os.path.join(BASE_DIR, "dataset", "Customer_Behavior_Demographic_Standard_scaled.csv")
 
-# Các tham số tìm K
+# Dataset 2: RobustScaler ONLY (NOT sequential)
+DATASET_ROBUST_ONLY = os.path.join(BASE_DIR, "dataset", "Customer_Behavior_Demographic_Robust_scaled.csv")
+
+# Original data (for post-hoc analysis)
+ENGINEERED_CSV = os.path.join(BASE_DIR, "dataset", "Customer_Behavior_Demographic.csv")
+
+# Output directories
+GRAPH_BASE_DIR = os.path.join(BASE_DIR, "graph", "Training", "With Library", "Demographic_WL")
+REPORT_DIR = os.path.join(BASE_DIR, "report", "Training", "With Library")
+
+# Output files
+LOG_FILE = os.path.join(REPORT_DIR, "Demographic_KMeans.log")
+RESULT_CSV_STANDARD_ONLY = os.path.join(REPORT_DIR, "Demographic_KMeans_StandardOnly_Results.csv")
+RESULT_CSV_ROBUST_ONLY = os.path.join(REPORT_DIR, "Demographic_KMeans_RobustOnly_Results.csv")
+COMPARISON_CSV = os.path.join(REPORT_DIR, "Demographic_KMeans_Comparison_StandardVsRobust.csv")
+
+# ================================================================================
+# CLUSTERING FEATURE CONFIG
+# ================================================================================
+CLUSTERING_FEATURES = ['Age', 'Income', 'Dependency_Ratio']
+POSTHOC_FEATURES = ['Education_ord', 'Life_Stage']
+
+# ================================================================================
+# THAM SỐ THUẬT TOÁN
+# ================================================================================
 K_MIN = 2
-K_MAX = 10  # có thể tăng nếu dataset lớn / cần thử nhiều K hơn
+K_MAX = 10
 RANDOM_STATE = 42
 N_INIT = 10
-MAX_ITER = 300       
+MAX_ITER = 300
+GAP_B = 10
 
-# Gap statistic params
-GAP_B = 10  # số mẫu tham chiếu; tăng giá trị để ổn định hơn nhưng tốn thời gian
+# ================================================================================
+# KHỞI TẠO THƯ MỤC VÀ LOGGING
+# ================================================================================
+os.makedirs(GRAPH_BASE_DIR, exist_ok=True)
+os.makedirs(REPORT_DIR, exist_ok=True)
 
-# -----------------------------
-# Kiểm tra và tạo thư mục cần thiết
-# -----------------------------
-os.makedirs(graph_output_dir, exist_ok=True)
-os.makedirs(report_dir, exist_ok=True)
-
-# -----------------------------
-# Thiết lập logging
-# -----------------------------
 logging.basicConfig(
     level=logging.INFO,
-    format="%(asctime)s  %(levelname)-8s  %(message)s",
+    format="%(asctime)s [%(levelname)s] %(message)s",
     handlers=[
-        logging.FileHandler(log_file, mode="w", encoding="utf-8"),
+        logging.FileHandler(LOG_FILE, mode="w", encoding="utf-8"),
         logging.StreamHandler(sys.stdout)
     ]
 )
 logger = logging.getLogger(__name__)
 
-# -----------------------------
-# Hàm phụ trợ
-# -----------------------------
-def load_dataset(path):
-    """Nạp dataset từ CSV, trả về DataFrame (chưa đổi nhãn)"""
-    logger.info("Loading dataset: %s", path)
+# ================================================================================
+# HÀM TIỆN ÍCH
+# ================================================================================
+
+def print_section_header(title, width=100, char='='):
+    """In tiêu đề phần với đường viền"""
+    logger.info("\n" + char * width)
+    logger.info(title.center(width))
+    logger.info(char * width + "\n")
+
+def load_dataset(path, dataset_name):
+    """Đọc dữ liệu từ file CSV"""
+    logger.info("Dang tai du lieu: %s", dataset_name)
+    
+    if not os.path.exists(path):
+        logger.error("LỖI: Tệp không tồn tại: %s", path)
+        raise FileNotFoundError(f"Dataset not found: {path}")
+    
     df = pd.read_csv(path)
-    logger.info("Loaded shape: %s", df.shape)
+    logger.info("✓ Kich thuoc du lieu: %d hang x %d cot", df.shape[0], df.shape[1])
+    logger.info("  Bo nho: %.2f KB\n", df.memory_usage(deep=True).sum() / 1024)
     return df
 
-def validate_dataframe(df):
-    """Kiểm tra nhanh quality: missing, dtypes, basic stats"""
-    logger.info("Validating dataframe...")
+def validate_dataframe(df, dataset_name):
+    """Kiểm tra chất lượng dữ liệu"""
+    print_section_header(f"KIEM TRA CHAT LUONG DU LIEU - {dataset_name.upper()}")
+    
+    # Kiểm tra giá trị bị thiếu
     missing = df.isnull().sum()
-    total_missing = missing.sum()
-    if total_missing > 0:
-        logger.warning("Missing values detected:")
-        for col, cnt in missing.items():
-            if cnt > 0:
-                logger.warning("  %s : %d", col, cnt)
+    if missing.sum() == 0:
+        logger.info("✓ Khong co gia tri bi thieu")
     else:
-        logger.info("No missing values detected.")
+        logger.warning("⚠ Phat hien gia tri thieu:")
+        for col, cnt in missing[missing > 0].items():
+            logger.warning("  - %s: %d gia tri (%.2f%%)", col, cnt, cnt/len(df)*100)
+    
+    # Kiểm tra giá trị vô hạn
+    numeric_df = df.select_dtypes(include=[np.number])
+    inf_count = np.isinf(numeric_df).sum().sum()
+    if inf_count == 0:
+        logger.info("✓ Khong co gia tri vo han")
+    else:
+        logger.warning("⚠ Phat hien %d gia tri vo han", inf_count)
+    
+    # Kiểm tra kiểu dữ liệu
+    logger.info("\nKieu du lieu cac cot:")
+    for col in df.columns:
+        logger.info("  - %-35s: %s", col, df[col].dtype)
+    
+    # Thống kê mô tả
+    logger.info("\nThong ke mo ta (chi cac cot so):")
+    logger.info("\n%s\n", numeric_df.describe().to_string())
 
-    logger.info("Data types:")
-    logger.info(df.dtypes.to_string())
-
-    logger.info("Basic describe():")
-    logger.info(df.describe().to_string())
-
-def compute_pre_stats(df):
-    """Trích thống kê trước khi scaling / trước clustering"""
-    logger.info("Pre-clustering statistics (per feature):")
-    stats = df.describe().transpose()
-    logger.info("\n" + stats.to_string())
-
-def save_plot(fig, fname):
-    path = os.path.join(graph_output_dir, fname)
+def save_plot(fig, fname, subdir=""):
+    """Lưu biểu đồ"""
+    if subdir:
+        output_dir = os.path.join(GRAPH_BASE_DIR, subdir)
+        os.makedirs(output_dir, exist_ok=True)
+        path = os.path.join(output_dir, fname)
+    else:
+        path = os.path.join(GRAPH_BASE_DIR, fname)
+    
     fig.savefig(path, bbox_inches='tight', dpi=150)
-    logger.info("Saved plot: %s", path)
+    logger.info("  ✓ Luu bieu do: %s", fname)
     plt.close(fig)
 
-def compute_gap_statistic(X, refs=None, nrefs=GAP_B, max_k=K_MAX):
-    """
-    Compute Gap Statistic for k=1..max_k
-    Returns: gaps, sk, ref_inertia
-    Implementation: Tibshirani et al.
-    """
-    logger.info("Computing Gap Statistic with %d reference datasets...", nrefs)
+def compute_gap_statistic(X, nrefs=GAP_B, max_k=K_MAX):
+    """Tính Gap Statistic để xác định K tối ưu"""
+    logger.info("\n⏳ Dang tinh Gap Statistic voi %d mau tham chieu...", nrefs)
     shape = X.shape
-    if refs is None:
-        # create nrefs reference datasets by sampling from uniform distribution within feature-wise min-max
-        tops = X.max(axis=0)
-        bots = X.min(axis=0)
-        dists = np.diag(tops - bots)
-        rands = np.random.RandomState(RANDOM_STATE).rand(nrefs, shape[0], shape[1])
-        refs = np.zeros_like(rands)
-        for i in range(nrefs):
-            refs[i] = rands[i] * (tops - bots) + bots
-
-    # compute Wk for reference and original data
-    def wk(data, k):
-        kmeans = KMeans(n_clusters=k, init='k-means++', n_init=N_INIT, random_state=RANDOM_STATE)
+    
+    tops = X.max(axis=0)
+    bots = X.min(axis=0)
+    rands = np.random.RandomState(RANDOM_STATE).rand(nrefs, shape[0], shape[1])
+    refs = np.zeros_like(rands)
+    for i in range(nrefs):
+        refs[i] = rands[i] * (tops - bots) + bots
+    
+    def compute_wk(data, k):
+        kmeans = KMeans(n_clusters=k, init='k-means++', n_init=N_INIT, 
+                       random_state=RANDOM_STATE, max_iter=MAX_ITER)
         kmeans.fit(data)
-        # inertia is sum of squared distances to closest cluster center
         return kmeans.inertia_
-
+    
     gaps = np.zeros(max_k)
     sk = np.zeros(max_k)
     wk_orig = np.zeros(max_k)
-    wk_refs = np.zeros((nrefs, max_k))
-
+    
     for k in range(1, max_k + 1):
-        wk_orig[k-1] = wk(X, k)
+        wk_orig[k-1] = compute_wk(X, k)
+        
+        wk_refs = np.zeros(nrefs)
         for i in range(nrefs):
-            wk_refs[i, k-1] = wk(refs[i], k)
-        log_wk_refs = np.log(wk_refs[:, k-1])
+            wk_refs[i] = compute_wk(refs[i], k)
+        
+        log_wk_refs = np.log(wk_refs)
         gap = np.mean(log_wk_refs) - np.log(wk_orig[k-1])
         gaps[k-1] = gap
         sk[k-1] = np.sqrt(np.mean((log_wk_refs - np.mean(log_wk_refs))**2)) * np.sqrt(1 + 1.0 / nrefs)
-        logger.info("Gap k=%d: gap=%.4f, sk=%.4f, log(Wk)=%.4f", k, gaps[k-1], sk[k-1], np.log(wk_orig[k-1]))
+    
+    logger.info("✓ Gap Statistic tinh xong\n")
     return gaps, sk
 
-# -----------------------------
-# Main pipeline
-# -----------------------------
-def run_kmeans_pipeline(dataset_path, graph_output_dir):
-    # 1. Load
-    df = load_dataset(dataset_path)
-    # Nếu dataframe có cột ID hoặc non-feature, loại bỏ nếu cần.
-    # Giả sử các cột đặc trưng là tất cả cột numeric; giữ nguyên tên cột để dùng trong heatmap/centroid.
-    feature_cols = df.select_dtypes(include=[np.number]).columns.tolist()
-    if len(feature_cols) == 0:
-        logger.critical("No numeric features found in dataset. Exiting.")
-        return
-    X = df[feature_cols].values
+def compute_advanced_metrics(X, labels, centroids):
+    """Tính toán các chỉ số đánh giá nâng cao"""
+    n_clusters = len(np.unique(labels))
+    silhouette_vals = silhouette_samples(X, labels)
+    
+    cluster_silhouettes = {}
+    for i in range(n_clusters):
+        cluster_mask = (labels == i)
+        cluster_silhouettes[i] = {
+            'mean': np.mean(silhouette_vals[cluster_mask]),
+            'min': np.min(silhouette_vals[cluster_mask]),
+            'max': np.max(silhouette_vals[cluster_mask]),
+            'negative_count': np.sum(silhouette_vals[cluster_mask] < 0)
+        }
+    
+    within_cluster_variance = {}
+    for i in range(n_clusters):
+        cluster_mask = (labels == i)
+        cluster_points = X[cluster_mask]
+        if len(cluster_points) > 1:
+            variance = np.var(cluster_points, axis=0).mean()
+            within_cluster_variance[i] = variance
+        else:
+            within_cluster_variance[i] = 0.0
+    
+    centroid_distances = squareform(pdist(centroids, metric='euclidean'))
+    np.fill_diagonal(centroid_distances, np.inf)
+    min_centroid_dist = np.min(centroid_distances) if np.any(centroid_distances != np.inf) else 0
+    avg_centroid_dist = np.mean(centroid_distances[centroid_distances != np.inf]) if np.any(centroid_distances != np.inf) else 0
+    
+    cluster_sizes = np.bincount(labels)
+    balance_ratio = cluster_sizes.min() / cluster_sizes.max() if len(cluster_sizes) > 0 else 0
+    
+    avg_within_var = np.mean(list(within_cluster_variance.values())) if within_cluster_variance else 0
+    compactness_separation = avg_centroid_dist / (avg_within_var + 1e-10)
+    
+    return {
+        'cluster_silhouettes': cluster_silhouettes,
+        'within_cluster_variance': within_cluster_variance,
+        'min_centroid_distance': min_centroid_dist,
+        'avg_centroid_distance': avg_centroid_dist,
+        'cluster_balance_ratio': balance_ratio,
+        'compactness_separation_score': compactness_separation
+    }
 
-    # 2. Validate
-    validate_dataframe(df)
-    compute_pre_stats(df[feature_cols])
+def vote_for_k(silhouette_scores, ch_scores, db_scores, K_range, gaps=None, sk=None):
+    """Chọn K bằng voting từ nhiều metrics"""
+    votes = {}
+    
+    # Silhouette: higher is better
+    valid_sil = [(k, s) for k, s in zip(K_range, silhouette_scores) if not np.isnan(s)]
+    if valid_sil:
+        k_sil = max(valid_sil, key=lambda x: x[1])[0]
+        votes['silhouette'] = k_sil
+    
+    # Calinski-Harabasz: higher is better
+    valid_ch = [(k, s) for k, s in zip(K_range, ch_scores) if not np.isnan(s)]
+    if valid_ch:
+        k_ch = max(valid_ch, key=lambda x: x[1])[0]
+        votes['calinski_harabasz'] = k_ch
+    
+    # Davies-Bouldin: lower is better
+    valid_db = [(k, s) for k, s in zip(K_range, db_scores) if not np.isnan(s)]
+    if valid_db:
+        k_db = min(valid_db, key=lambda x: x[1])[0]
+        votes['davies_bouldin'] = k_db
+    
+    # Gap Statistic
+    if gaps is not None and sk is not None:
+        for k in range(K_MIN, len(gaps)):
+            if gaps[k-1] >= gaps[k] - sk[k]:
+                votes['gap_statistic'] = k
+                break
+    
+    # Tính số phiếu cho mỗi K
+    vote_counts = {}
+    for k in votes.values():
+        vote_counts[k] = vote_counts.get(k, 0) + 1
+    
+    max_votes = max(vote_counts.values()) if vote_counts else 0
+    winners = [k for k, cnt in vote_counts.items() if cnt == max_votes]
+    
+    # Chọn K tốt nhất
+    if len(winners) == 1:
+        chosen_k = winners[0]
+    else:
+        # Ưu tiên Silhouette > Calinski-Harabasz
+        if 'silhouette' in votes and votes['silhouette'] in winners:
+            chosen_k = votes['silhouette']
+        elif 'calinski_harabasz' in votes and votes['calinski_harabasz'] in winners:
+            chosen_k = votes['calinski_harabasz']
+        else:
+            chosen_k = min(winners)
+    
+    logger.info("\n╔═══════════════════════════════════════════════════════════╗")
+    logger.info("║              KET QUA VOTING CHON K TOI UU                 ║")
+    logger.info("╚═══════════════════════════════════════════════════════════╝")
+    
+    for metric, k in sorted(votes.items()):
+        marker = "★ CHON" if k == chosen_k else "      "
+        logger.info("%s %-25s -> K = %d", marker, metric, k)
+    
+    logger.info("\n✓ K duoc chon theo da so: %d (%d/%d phieu)", chosen_k, vote_counts.get(chosen_k, 0), len(votes))
+    
+    return chosen_k, votes
 
-    # 3. Tìm K tối ưu: Elbow + Silhouette
+# ================================================================================
+# HÀM CHẠY K-MEANS CHO 1 DATASET (CORE PIPELINE)
+# ================================================================================
+
+def run_kmeans_single_dataset(df_scaled, dataset_name, dataset_type, subdir, df_orig=None):
+    """
+    Chạy toàn bộ quy trình K-Means cho 1 dataset
+    
+    Args:
+        df_scaled: DataFrame đã scaled
+        dataset_name: Tên hiển thị (VD: "Standard Only", "Robust Only")
+        dataset_type: Loại dataset (VD: "StandardOnly", "RobustOnly") - dùng cho tên file
+        subdir: Thư mục con để lưu biểu đồ
+        df_orig: DataFrame gốc (raw data) cho phân tích post-hoc
+    
+    Returns:
+        dict: Kết quả clustering
+    """
+    print_section_header(f"PHAN TICH DATASET: {dataset_name.upper()}")
+    
+    # Validate data
+    validate_dataframe(df_scaled, dataset_name)
+    
+    # Kiểm tra clustering features
+    missing_feats = [f for f in CLUSTERING_FEATURES if f not in df_scaled.columns]
+    if missing_feats:
+        logger.critical("LỖI: Không tìm thấy clustering features: %s", missing_feats)
+        return None
+
+    X = df_scaled[CLUSTERING_FEATURES].values
+    logger.info("\nSo dac trung su dung cho clustering: %d", len(CLUSTERING_FEATURES))
+    logger.info("Danh sach: %s\n", ", ".join(CLUSTERING_FEATURES))
+    
+    # ============================================================================
+    # ĐÁNH GIÁ K TỐI ƯU
+    # ============================================================================
+    print_section_header("DANH GIA K TOI UU")
+    
     inertias = []
     silhouette_scores = []
     ch_scores = []
     db_scores = []
     K_range = list(range(K_MIN, K_MAX + 1))
-    logger.info("Evaluating K from %d to %d", K_MIN, K_MAX)
-
+    
+    logger.info("Dang danh gia K tu %d den %d...\n", K_MIN, K_MAX)
+    
     for k in K_range:
-        logger.info("Fitting KMeans for k=%d", k)
-        kmeans = KMeans(n_clusters=k, init='k-means++', n_init=N_INIT, random_state=RANDOM_STATE, max_iter=MAX_ITER)
+        kmeans = KMeans(n_clusters=k, init='k-means++', n_init=N_INIT, 
+                       random_state=RANDOM_STATE, max_iter=MAX_ITER)
         labels = kmeans.fit_predict(X)
-        inertia = kmeans.inertia_
-        inertias.append(inertia)
-        logger.info("  inertia: %.4f", inertia)
+        inertias.append(kmeans.inertia_)
+        
         if k > 1:
-            sil = silhouette_score(X, labels)
-            silhouette_scores.append(sil)
-            ch = calinski_harabasz_score(X, labels)
-            db = davies_bouldin_score(X, labels)
-            ch_scores.append(ch)
-            db_scores.append(db)
-            logger.info("  silhouette: %.4f, calinski_harabasz: %.4f, davies_bouldin: %.4f", sil, ch, db)
+            silhouette_scores.append(silhouette_score(X, labels))
+            ch_scores.append(calinski_harabasz_score(X, labels))
+            db_scores.append(davies_bouldin_score(X, labels))
         else:
             silhouette_scores.append(np.nan)
             ch_scores.append(np.nan)
             db_scores.append(np.nan)
-
-    # 3a. Vẽ Elbow plot
-    fig = plt.figure(figsize=(6,4))
-    plt.plot(K_range, inertias, 'o-', color='tab:blue')
-    plt.xlabel('K')
-    plt.ylabel('Inertia')
-    plt.title('Elbow Plot (Inertia vs K)')
-    save_plot(fig, "elbow_plot.png")
-
-    # 3b. Vẽ Silhouette score vs K
-    fig = plt.figure(figsize=(6,4))
-    plt.plot(K_range, silhouette_scores, 'o-', color='tab:green')
-    plt.xlabel('K')
-    plt.ylabel('Silhouette Score')
-    plt.title('Silhouette Score vs K')
-    save_plot(fig, "silhouette_vs_k.png")
-
-    # 4. Gap statistic
-    try:
-        gaps, sk = compute_gap_statistic(X, nrefs=GAP_B, max_k=K_MAX)
-        # Plot Gap
-        fig = plt.figure(figsize=(6,4))
-        ks = list(range(1, K_MAX+1))
-        plt.plot(ks, gaps, 'o-', color='tab:purple')
-        plt.fill_between(ks, gaps - sk, gaps + sk, color='lavender', alpha=0.4)
-        plt.xlabel('K')
-        plt.ylabel('Gap Statistic')
-        plt.title('Gap Statistic vs K')
-        save_plot(fig, "gap_statistic.png")
-    except Exception as e:
-        logger.warning("Gap Statistic computation failed: %s", str(e))
-        gaps = None
-        sk = None
-
-    # 5. Quyết định K tối ưu (tự động đề xuất; người dùng có thể điều chỉnh)
-    # Heuristic: chọn K với silhouette cao nhất (k>=2), đồng thời kiểm tra elbow (giảm nhiều inertia)
-    best_k_by_sil = K_range[1 + int(np.nanargmax(silhouette_scores[1:]))] if len(K_range) > 1 else K_range[0]
-    logger.info("Best K by silhouette: %d", best_k_by_sil)
-
-    # Nếu có gap statistic, áp dụng Tibshirani rule:
-    chosen_k = best_k_by_sil
-    if gaps is not None:
-        # tìm k* = smallest k such that gap(k) >= gap(k+1) - s_{k+1}
-        k_star = None
-        for k in range(1, len(gaps)):
-            if gaps[k-1] >= gaps[k] - sk[k]:
-                k_star = k
-                break
-        if k_star is not None:
-            k_star = max(k_star, K_MIN)  # đảm bảo >= K_MIN
-            chosen_k = k_star
-            logger.info("Gap statistic suggests k = %d", chosen_k)
+    
+    # ============================================================================
+    # VẼ ELBOW PLOT
+    # ============================================================================
+    logger.info("ELBOW METHOD - INERTIA")
+    logger.info("%-5s | %-12s | %-12s", "K", "Inertia", "Giam (%)")
+    logger.info("-" * 40)
+    for i, k in enumerate(K_range):
+        if i == 0:
+            logger.info("%-5d | %12.4f | %12s", k, inertias[i], "---")
         else:
-            logger.info("Gap statistic did not suggest a clear k; keep silhouette suggestion: %d", chosen_k)
-    else:
-        logger.info("No gap statistic result; choose K by silhouette: %d", chosen_k)
-
-    # 6. Chạy KMeans cuối cùng với init='k-means++'
-    logger.info("Running final KMeans with K=%d", chosen_k)
-    kmeans_final = KMeans(n_clusters=chosen_k, init='k-means++', n_init=50, random_state=RANDOM_STATE, max_iter=MAX_ITER)
+            decrease_pct = (inertias[i-1] - inertias[i]) / inertias[i-1] * 100
+            logger.info("%-5d | %12.4f | %11.2f%%", k, inertias[i], decrease_pct)
+    
+    fig, ax = plt.subplots(figsize=(10, 6))
+    ax.plot(K_range, inertias, 'o-', color='steelblue', linewidth=2, markersize=10, label='Inertia')
+    ax.set_xlabel('So cum (K)', fontsize=13, fontweight='bold')
+    ax.set_ylabel('Inertia (Sum of Squared Distances)', fontsize=13, fontweight='bold')
+    ax.set_title(f'Phuong phap Elbow - {dataset_name}\n(K toi uu o diem gap)', fontsize=15, fontweight='bold')
+    ax.grid(True, alpha=0.3, linestyle='--')
+    ax.set_xticks(K_range)
+    ax.legend(fontsize=11)
+    plt.tight_layout()
+    save_plot(fig, f"elbow_plot_{dataset_type.lower()}.png", subdir)
+    
+    # ============================================================================
+    # VẼ SILHOUETTE PLOT
+    # ============================================================================
+    logger.info("\nSILHOUETTE SCORE")
+    logger.info("%-5s | %-12s | %-20s", "K", "Silhouette", "Danh gia")
+    logger.info("-" * 50)
+    for k, score in zip(K_range, silhouette_scores):
+        if np.isnan(score):
+            evaluation = "Khong ap dung"
+        elif score > 0.7:
+            evaluation = "Xuat sac"
+        elif score > 0.5:
+            evaluation = "Tot"
+        elif score > 0.3:
+            evaluation = "Trung binh"
+        elif score > 0.2:
+            evaluation = "Yeu"
+        else:
+            evaluation = "Kem"
+        logger.info("%-5d | %12.4f | %-20s", k, score if not np.isnan(score) else 0, evaluation)
+    
+    fig, ax = plt.subplots(figsize=(10, 6))
+    valid_k = [k for k, s in zip(K_range, silhouette_scores) if not np.isnan(s)]
+    valid_scores = [s for s in silhouette_scores if not np.isnan(s)]
+    if valid_k:
+        ax.plot(valid_k, valid_scores, 'o-', color='seagreen', linewidth=2, markersize=10, label='Silhouette Score')
+        ax.fill_between(valid_k, valid_scores, alpha=0.3, color='seagreen')
+    ax.set_xlabel('So cum (K)', fontsize=13, fontweight='bold')
+    ax.set_ylabel('Silhouette Score', fontsize=13, fontweight='bold')
+    ax.set_title(f'Diem Silhouette - {dataset_name}\n(Cao hon = Tot hon)', fontsize=15, fontweight='bold')
+    ax.grid(True, alpha=0.3, linestyle='--')
+    ax.set_xticks(K_range)
+    ax.axhline(y=0.5, color='red', linestyle='--', alpha=0.6, linewidth=2, label='Nguong tot (0.5)')
+    ax.set_ylim([min(valid_scores) - 0.1 if valid_scores else 0, 1.0])
+    ax.legend(fontsize=11)
+    plt.tight_layout()
+    save_plot(fig, f"silhouette_score_{dataset_type.lower()}.png", subdir)
+    
+    # ============================================================================
+    # VẼ OTHER METRICS
+    # ============================================================================
+    logger.info("\nCALINSKI-HARABASZ VA DAVIES-BOULDIN")
+    logger.info("%-5s | %-18s | %-18s", "K", "Calinski-Harabasz", "Davies-Bouldin")
+    logger.info("-" * 50)
+    for k, ch, db in zip(K_range, ch_scores, db_scores):
+        if np.isnan(ch):
+            logger.info("%-5d | %18s | %18s", k, "---", "---")
+        else:
+            logger.info("%-5d | %18.4f | %18.4f", k, ch, db)
+    
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
+    
+    # Calinski-Harabasz (higher is better)
+    valid_k = [k for k, ch in zip(K_range, ch_scores) if not np.isnan(ch)]
+    valid_ch = [ch for ch in ch_scores if not np.isnan(ch)]
+    if valid_k:
+        ax1.plot(valid_k, valid_ch, 'o-', color='darkorange', linewidth=2, markersize=10, label='Calinski-Harabasz')
+        ax1.fill_between(valid_k, valid_ch, alpha=0.3, color='darkorange')
+    ax1.set_xlabel('So cum (K)', fontsize=13, fontweight='bold')
+    ax1.set_ylabel('Calinski-Harabasz Score', fontsize=13, fontweight='bold')
+    ax1.set_title(f'Diem Calinski-Harabasz - {dataset_name}\n(Cao hon = Tot hon)', fontsize=14, fontweight='bold')
+    ax1.grid(True, alpha=0.3, linestyle='--')
+    ax1.set_xticks(K_range)
+    ax1.legend(fontsize=11)
+    
+    # Davies-Bouldin (lower is better)
+    valid_db = [db for db in db_scores if not np.isnan(db)]
+    if valid_k:
+        ax2.plot(valid_k, valid_db, 'o-', color='crimson', linewidth=2, markersize=10, label='Davies-Bouldin')
+        ax2.fill_between(valid_k, valid_db, alpha=0.3, color='crimson')
+    ax2.set_xlabel('So cum (K)', fontsize=13, fontweight='bold')
+    ax2.set_ylabel('Davies-Bouldin Score', fontsize=13, fontweight='bold')
+    ax2.set_title(f'Diem Davies-Bouldin - {dataset_name}\n(Thap hon = Tot hon)', fontsize=14, fontweight='bold')
+    ax2.grid(True, alpha=0.3, linestyle='--')
+    ax2.set_xticks(K_range)
+    ax2.legend(fontsize=11)
+    
+    plt.tight_layout()
+    save_plot(fig, f"other_metrics_{dataset_type.lower()}.png", subdir)
+    
+    # ============================================================================
+    # GAP STATISTIC
+    # ============================================================================
+    gaps = None
+    sk_vals = None
+    k_optimal_gap = None
+    
+    try:
+        gaps, sk_vals = compute_gap_statistic(X, nrefs=GAP_B, max_k=K_MAX)
+        
+        logger.info("GAP STATISTIC")
+        logger.info("%-5s | %-12s | %-12s | %-15s", "K", "Gap", "Std Error", "Gap - SE")
+        logger.info("-" * 60)
+        for k in range(1, len(gaps) + 1):
+            gap_minus_se = gaps[k-1] - sk_vals[k-1]
+            logger.info("%-5d | %12.4f | %12.4f | %15.4f", k, gaps[k-1], sk_vals[k-1], gap_minus_se)
+        
+        for k in range(1, len(gaps)):
+            if gaps[k-1] >= gaps[k] - sk_vals[k]:
+                k_optimal_gap = k
+                break
+        
+        if k_optimal_gap:
+            logger.info("\nK toi uu theo Gap Statistic: %d", k_optimal_gap)
+        
+        fig, ax = plt.subplots(figsize=(10, 6))
+        ks = list(range(1, len(gaps) + 1))
+        ax.plot(ks, gaps, 'o-', color='purple', linewidth=2, markersize=10, label='Gap Statistic')
+        ax.fill_between(ks, gaps - sk_vals, gaps + sk_vals, color='lavender', alpha=0.4, label='Gap +/- SE')
+        if k_optimal_gap:
+            ax.axvline(x=k_optimal_gap, color='red', linestyle='--', linewidth=2.5, label=f'K toi uu = {k_optimal_gap}')
+        ax.set_xlabel('So cum (K)', fontsize=13, fontweight='bold')
+        ax.set_ylabel('Gap Statistic', fontsize=13, fontweight='bold')
+        ax.set_title(f'Gap Statistic - {dataset_name}\n(Chon K khi gap giam manh)', fontsize=15, fontweight='bold')
+        ax.grid(True, alpha=0.3, linestyle='--')
+        ax.legend(fontsize=11)
+        plt.tight_layout()
+        save_plot(fig, f"gap_statistic_{dataset_type.lower()}.png", subdir)
+        
+    except Exception as e:
+        logger.warning("Khong the tinh Gap Statistic: %s", str(e))
+    
+    # ============================================================================
+    # CHỌN K TỐI ƯU
+    # ============================================================================
+    print_section_header("QUYET DINH K TOI UU")
+    
+    chosen_k, votes = vote_for_k(silhouette_scores, ch_scores, db_scores, K_range, gaps, sk_vals)
+    logger.info("\nK CUOI CUNG DUOC CHON CHO %s: %d\n", dataset_name.upper(), chosen_k)
+    
+    # ============================================================================
+    # CHẠY K-MEANS CUỐI CÙNG
+    # ============================================================================
+    print_section_header("CHAY K-MEANS CUOI CUNG")
+    
+    logger.info("Dang chay K-Means voi K=%d (50 lan khoi tao)...", chosen_k)
+    kmeans_final = KMeans(n_clusters=chosen_k, init='k-means++', n_init=50, 
+                         random_state=RANDOM_STATE, max_iter=MAX_ITER)
     labels_final = kmeans_final.fit_predict(X)
     centroids = kmeans_final.cluster_centers_
+    
     inertia_final = kmeans_final.inertia_
     sil_final = silhouette_score(X, labels_final) if chosen_k > 1 else float('nan')
     ch_final = calinski_harabasz_score(X, labels_final) if chosen_k > 1 else float('nan')
     db_final = davies_bouldin_score(X, labels_final) if chosen_k > 1 else float('nan')
-
-    logger.info("Final inertia: %.4f", inertia_final)
-    logger.info("Final silhouette: %.4f", sil_final)
-    logger.info("Final calinski_harabasz: %.4f", ch_final)
-    logger.info("Final davies_bouldin: %.4f", db_final)
-
-    # Cluster sizes
+    
+    logger.info("\nCac chi so co ban:")
+    logger.info("  Inertia:             %10.4f", inertia_final)
+    logger.info("  Silhouette:          %10.4f", sil_final if not np.isnan(sil_final) else 0)
+    logger.info("  Calinski-Harabasz:   %10.4f", ch_final if not np.isnan(ch_final) else 0)
+    logger.info("  Davies-Bouldin:      %10.4f", db_final if not np.isnan(db_final) else 0)
+    
+    # Tính toán advanced metrics
+    logger.info("\nDang tinh toan cac chi so nang cao...")
+    advanced_metrics = compute_advanced_metrics(X, labels_final, centroids)
+    
+    logger.info("\nCHI SO DANH GIA NANG CAO:")
+    logger.info("1. SILHOUETTE THEO TUNG CLUSTER:")
+    logger.info("   %-10s | %-10s | %-15s | %-15s", "Cluster", "Trung binh", "Khoang", "So diem am")
+    logger.info("   " + "-" * 65)
+    
+    for cluster_id in sorted(advanced_metrics['cluster_silhouettes'].keys()):
+        stats_data = advanced_metrics['cluster_silhouettes'][cluster_id]
+        logger.info("   %-10d | %10.4f | [%6.4f, %6.4f] | %15d", 
+                   cluster_id, stats_data['mean'], stats_data['min'], stats_data['max'], stats_data['negative_count'])
+        if stats_data['mean'] < 0.2:
+            logger.warning("   Canh bao: Cluster %d co chat luong thap (silhouette < 0.2)", cluster_id)
+    
+    logger.info("\n2. PHUONG SAI TRONG CLUSTER:")
+    for cluster_id in sorted(advanced_metrics['within_cluster_variance'].keys()):
+        variance = advanced_metrics['within_cluster_variance'][cluster_id]
+        logger.info("   Cluster %d: %.4f", cluster_id, variance)
+    
+    logger.info("\n3. KHOANG CACH GIUA CAC TAM CLUSTER:")
+    logger.info("   Khoang cach toi thieu: %.4f", advanced_metrics['min_centroid_distance'])
+    logger.info("   Khoang cach trung binh: %.4f", advanced_metrics['avg_centroid_distance'])
+    
+    logger.info("\n4. TY LE CAN BANG CLUSTER:")
+    logger.info("   Ty le: %.4f", advanced_metrics['cluster_balance_ratio'])
+    if advanced_metrics['cluster_balance_ratio'] < 0.3:
+        logger.warning("   Canh bao: Cac cluster bi mat can bang")
+    
+    logger.info("\n5. DIEM COMPACTNESS-SEPARATION:")
+    logger.info("   Diem so: %.4f", advanced_metrics['compactness_separation_score'])
+    
+    # ============================================================================
+    # SILHOUETTE ANALYSIS
+    # ============================================================================
+    fig, ax = plt.subplots(figsize=(12, 8))
+    silhouette_vals = silhouette_samples(X, labels_final)
+    silhouette_avg = silhouette_score(X, labels_final)
+    
+    y_lower = 10
+    for i in range(chosen_k):
+        cluster_silhouette_vals = silhouette_vals[labels_final == i]
+        cluster_silhouette_vals.sort()
+        
+        size_cluster_i = cluster_silhouette_vals.shape[0]
+        if size_cluster_i == 0:
+            continue
+        y_upper = y_lower + size_cluster_i
+        
+        color = plt.cm.nipy_spectral(float(i) / chosen_k)
+        ax.fill_betweenx(np.arange(y_lower, y_upper), 0, cluster_silhouette_vals,
+                         facecolor=color, edgecolor=color, alpha=0.7)
+        ax.text(-0.05, y_lower + 0.5 * size_cluster_i, f'Cluster {i}')
+        y_lower = y_upper + 10
+    
+    ax.set_title(f'Phan tich Silhouette - {dataset_name} (K={chosen_k})', fontsize=15, fontweight='bold')
+    ax.set_xlabel('He so Silhouette', fontsize=13, fontweight='bold')
+    ax.set_ylabel('Cluster', fontsize=13, fontweight='bold')
+    ax.axvline(x=silhouette_avg, color="red", linestyle="--", linewidth=2.5, 
+               label=f'Trung binh: {silhouette_avg:.3f}')
+    ax.set_yticks([])
+    ax.set_xlim([-0.3, 1])
+    ax.legend(fontsize=11, loc='best')
+    ax.grid(True, alpha=0.3, axis='x', linestyle='--')
+    plt.tight_layout()
+    save_plot(fig, f"silhouette_analysis_{dataset_type.lower()}.png", subdir)
+    
+    # ============================================================================
+    # CLUSTER QUALITY SUMMARY
+    # ============================================================================
+    fig, axes = plt.subplots(2, 2, figsize=(15, 12))
+    cluster_ids = sorted(list(advanced_metrics['cluster_silhouettes'].keys()))
+    
+    # 1. Silhouette Means
+    silhouette_means = [advanced_metrics['cluster_silhouettes'][i]['mean'] for i in cluster_ids]
+    bars1 = axes[0, 0].bar(cluster_ids, silhouette_means, color='steelblue', alpha=0.7, edgecolor='black', linewidth=1.5)
+    axes[0, 0].axhline(y=0.2, color='red', linestyle='--', linewidth=2, label='Nguong yeu (0.2)')
+    axes[0, 0].set_title('Silhouette Score theo Cluster', fontsize=13, fontweight='bold')
+    axes[0, 0].set_xlabel('Cluster', fontsize=11, fontweight='bold')
+    axes[0, 0].set_ylabel('Silhouette trung binh', fontsize=11, fontweight='bold')
+    axes[0, 0].legend(fontsize=10)
+    axes[0, 0].grid(True, alpha=0.3, axis='y', linestyle='--')
+    axes[0, 0].set_xticks(cluster_ids)
+    for i, (cid, val) in enumerate(zip(cluster_ids, silhouette_means)):
+        axes[0, 0].text(cid, val + 0.02, f'{val:.3f}', ha='center', fontsize=9, fontweight='bold')
+    
+    # 2. Within-Cluster Variance
+    variances = [advanced_metrics['within_cluster_variance'][i] for i in cluster_ids]
+    bars2 = axes[0, 1].bar(cluster_ids, variances, color='coral', alpha=0.7, edgecolor='black', linewidth=1.5)
+    axes[0, 1].set_title('Phuong sai trong Cluster', fontsize=13, fontweight='bold')
+    axes[0, 1].set_xlabel('Cluster', fontsize=11, fontweight='bold')
+    axes[0, 1].set_ylabel('Phuong sai trung binh', fontsize=11, fontweight='bold')
+    axes[0, 1].grid(True, alpha=0.3, axis='y', linestyle='--')
+    axes[0, 1].set_xticks(cluster_ids)
+    for cid, val in zip(cluster_ids, variances):
+        axes[0, 1].text(cid, val + max(variances)*0.02, f'{val:.3f}', ha='center', fontsize=9, fontweight='bold')
+    
+    # 3. Misclassified Points
+    neg_counts = [advanced_metrics['cluster_silhouettes'][i]['negative_count'] for i in cluster_ids]
+    bars3 = axes[1, 0].bar(cluster_ids, neg_counts, color='indianred', alpha=0.7, edgecolor='black', linewidth=1.5)
+    axes[1, 0].set_title('So diem phan loai sai (Silhouette < 0)', fontsize=13, fontweight='bold')
+    axes[1, 0].set_xlabel('Cluster', fontsize=11, fontweight='bold')
+    axes[1, 0].set_ylabel('So luong', fontsize=11, fontweight='bold')
+    axes[1, 0].grid(True, alpha=0.3, axis='y', linestyle='--')
+    axes[1, 0].set_xticks(cluster_ids)
+    for cid, val in zip(cluster_ids, neg_counts):
+        axes[1, 0].text(cid, val + max(neg_counts)*0.02, str(int(val)), ha='center', fontsize=9, fontweight='bold')
+    
+    # 4. Summary Metrics
+    summary_labels = ['Ty le\ncan bang', 'KC tam\ntoi thieu', 'Diem C-S\n(x10)']
+    summary_values = [
+        advanced_metrics['cluster_balance_ratio'],
+        advanced_metrics['min_centroid_distance'],
+        advanced_metrics['compactness_separation_score'] / 10
+    ]
+    colors_summary = ['#2ecc71', '#9b59b6', '#e67e22']
+    bars4 = axes[1, 1].bar(summary_labels, summary_values, color=colors_summary, alpha=0.7, edgecolor='black', linewidth=1.5)
+    axes[1, 1].set_title('Cac chi so tong hop', fontsize=13, fontweight='bold')
+    axes[1, 1].set_ylabel('Gia tri', fontsize=11, fontweight='bold')
+    axes[1, 1].grid(True, alpha=0.3, axis='y', linestyle='--')
+    for val, bar in zip(summary_values, bars4):
+        height = bar.get_height()
+        axes[1, 1].text(bar.get_x() + bar.get_width()/2., height + max(summary_values)*0.02,
+                       f'{val:.3f}', ha='center', va='bottom', fontsize=10, fontweight='bold')
+    
+    plt.suptitle(f'Tom tat chat luong Cluster - {dataset_name}', fontsize=16, fontweight='bold', y=0.995)
+    plt.tight_layout()
+    save_plot(fig, f"cluster_quality_summary_{dataset_type.lower()}.png", subdir)
+    
+    # ============================================================================
+    # CLUSTER SIZES
+    # ============================================================================
     unique, counts = np.unique(labels_final, return_counts=True)
-    logger.info("Cluster sizes:")
+    logger.info("\nPHAN BO CAC CLUSTER:")
+    logger.info("%-10s | %-10s | %-10s", "Cluster", "So luong", "Ty le (%)")
+    logger.info("-" * 35)
     for u, c in zip(unique, counts):
-        logger.info("  Cluster %d : %d", int(u), int(c))
-
-    # 7. Heatmap of centroids (features x clusters)
-    centroids_df = pd.DataFrame(centroids, columns=feature_cols)
-    # transpose for heatmap (features as rows)
+        logger.info("%-10d | %-10d | %9.2f%%", int(u), int(c), (c/len(X)*100))
+    
+    total_misclassified = sum(stats_item['negative_count'] 
+                              for stats_item in advanced_metrics['cluster_silhouettes'].values())
+    logger.info("\nSo diem bi phan loai sai (silhouette < 0): %d (%.2f%%)", 
+               total_misclassified, (total_misclassified / len(X)) * 100)
+    
+    # ============================================================================
+    # CENTROIDS ANALYSIS
+    # ============================================================================
+    logger.info("\nPHAN TICH TAM CLUSTER (CENTROIDS):")
+    centroids_df = pd.DataFrame(centroids, columns=CLUSTERING_FEATURES)
+    logger.info("\n%s", centroids_df.to_string())
+    
+    # Heatmap Centroids
     heat_df = centroids_df.transpose()
-    fig = plt.figure(figsize=(max(6, len(feature_cols)*0.5), max(4, chosen_k*0.3)))
-    sns.heatmap(heat_df, cmap='vlag', annot=True, fmt=".2f")
-    plt.xlabel('Cluster')
-    plt.ylabel('Feature')
-    plt.title('Cluster Centroids Heatmap (features x cluster)')
-    save_plot(fig, "centroid_heatmap.png")
-
-    # 8. Cluster centroid plot (centroid values per feature)
-    fig = plt.figure(figsize=(10,6))
+    fig = plt.figure(figsize=(max(10, chosen_k * 1.5), max(6, len(CLUSTERING_FEATURES) * 0.8)))
+    sns.heatmap(heat_df, cmap='RdYlGn', annot=True, fmt=".3f", 
+                cbar_kws={'label': 'Gia tri chuan hoa'}, linewidths=2, linecolor='black')
+    plt.xlabel('Cluster', fontsize=13, fontweight='bold')
+    plt.ylabel('Dac trung', fontsize=13, fontweight='bold')
+    plt.title(f'Ban do nhiet: Gia tri tam cluster - {dataset_name}', fontsize=15, fontweight='bold')
+    plt.tight_layout()
+    save_plot(fig, f"centroid_heatmap_{dataset_type.lower()}.png", subdir)
+    
+    # Line plot Centroids
+    fig, ax = plt.subplots(figsize=(12, 6))
     for i in range(centroids.shape[0]):
-        plt.plot(feature_cols, centroids[i], marker='o', label=f'Cluster {i}')
-    plt.xticks(rotation=45, ha='right')
-    plt.xlabel('Feature')
-    plt.ylabel('Centroid value')
-    plt.title('Cluster Centroid Plot')
-    plt.legend()
-    save_plot(fig, "centroid_plot.png")
-
-    # 9. 2D scatter by PCA (visualization)
+        ax.plot(CLUSTERING_FEATURES, centroids[i], marker='o', linewidth=2.5, markersize=10, 
+               label=f'Cluster {i}', alpha=0.7)
+    ax.set_xticks(range(len(CLUSTERING_FEATURES)))
+    ax.set_xticklabels(CLUSTERING_FEATURES, fontsize=11, fontweight='bold')
+    ax.set_xlabel('Dac trung', fontsize=13, fontweight='bold')
+    ax.set_ylabel('Gia tri tam cluster (chuan hoa)', fontsize=13, fontweight='bold')
+    ax.set_title(f'Bieu do gia tri tam cluster - {dataset_name}', fontsize=15, fontweight='bold')
+    ax.legend(fontsize=11, loc='best')
+    ax.grid(True, alpha=0.3, linestyle='--')
+    plt.tight_layout()
+    save_plot(fig, f"centroid_plot_{dataset_type.lower()}.png", subdir)
+    
+    # ============================================================================
+    # PCA VISUALIZATION
+    # ============================================================================
+    logger.info("\nDang thuc hien PCA de truc quan hoa...")
     pca = PCA(n_components=2, random_state=RANDOM_STATE)
     X_pca = pca.fit_transform(X)
+    
+    explained_var = pca.explained_variance_ratio_
+    logger.info("Phuong sai giai thich boi 2 PC dau tien: %.2f%%", sum(explained_var) * 100)
+    logger.info("  PC1: %.2f%%", explained_var[0] * 100)
+    logger.info("  PC2: %.2f%%", explained_var[1] * 100)
+    
     df_vis = pd.DataFrame({
-        'pc1': X_pca[:,0],
-        'pc2': X_pca[:,1],
+        'PC1': X_pca[:, 0],
+        'PC2': X_pca[:, 1],
         'cluster': labels_final
     })
-    fig = plt.figure(figsize=(8,6))
-    palette = sns.color_palette("tab10", n_colors=chosen_k)
-    sns.scatterplot(data=df_vis, x='pc1', y='pc2', hue='cluster', palette=palette, s=30, alpha=0.8)
-    plt.title('Clusters visualized by PCA (2D)')
-    save_plot(fig, "pca_scatter.png")
-
-    # 10. Scatter matrix (pairplot) with cluster hue - nếu feature số lượng lớn, chỉ chọn top 4 features by variance
-    num_features = len(feature_cols)
-    max_pairplot_features = 4
-    if num_features <= max_pairplot_features:
-        pairplot_cols = feature_cols
-    else:
-        variances = df[feature_cols].var().sort_values(ascending=False)
-        pairplot_cols = variances.index[:max_pairplot_features].tolist()
+    
+    fig, ax = plt.subplots(figsize=(12, 8))
+    palette = sns.color_palette("husl", n_colors=chosen_k)
+    sns.scatterplot(data=df_vis, x='PC1', y='PC2', hue='cluster', palette=palette, 
+                   s=80, alpha=0.6, edgecolor='black', linewidth=0.7, ax=ax)
+    ax.set_xlabel(f'PC1 ({explained_var[0]*100:.1f}%)', fontsize=13, fontweight='bold')
+    ax.set_ylabel(f'PC2 ({explained_var[1]*100:.1f}%)', fontsize=13, fontweight='bold')
+    ax.set_title(f'Truc quan hoa Cluster qua PCA - {dataset_name}', fontsize=15, fontweight='bold')
+    ax.legend(title='Cluster', fontsize=11, title_fontsize=12, loc='best', framealpha=0.9)
+    ax.grid(True, alpha=0.3, linestyle='--')
+    plt.tight_layout()
+    save_plot(fig, f"pca_scatter_{dataset_type.lower()}.png", subdir)
+    
+    logger.info("✓ PCA visualization chart saved\n")
+    
+    # ============================================================================
+    # PAIRPLOT
+    # ============================================================================
     try:
+        logger.info("Dang tao pairplot...")
         sns.set(style="ticks")
-        pair_df = df[pairplot_cols].copy()
+        pair_df = df_scaled[CLUSTERING_FEATURES].copy()
         pair_df['cluster'] = labels_final
-        g = sns.pairplot(pair_df, hue='cluster', palette=palette, diag_kind='kde', plot_kws={'s':20})
-        fname = os.path.join(graph_output_dir, "pairplot.png")
+        g = sns.pairplot(pair_df, hue='cluster', palette=palette, 
+                        diag_kind='kde', plot_kws={'s': 40, 'alpha': 0.6})
+        g.fig.suptitle(f'Ma tran phan tan - {dataset_name}', y=1.002, fontsize=15, fontweight='bold')
+        fname = os.path.join(GRAPH_BASE_DIR, subdir, f"pairplot_{dataset_type.lower()}.png")
         g.fig.savefig(fname, bbox_inches='tight', dpi=150)
-        logger.info("Saved plot: %s", fname)
+        logger.info("✓ Pairplot chart saved\n")
         plt.close('all')
     except Exception as e:
-        logger.warning("Pairplot failed: %s", str(e))
+        logger.warning("Khong the tao pairplot: %s\n", str(e))
+    
+    # ============================================================================
+    # PHÂN TÍCH RAW DATA (NẾU CÓ)
+    # ============================================================================
+    if df_orig is not None:
+        print_section_header("PHAN TICH DU LIEU GOC (RAW DATA)")
+        
+        df = df_orig.copy()
+        df['cluster'] = labels_final
+        
+        logger.info("1. THONG KE CAC DAC TRUNG CLUSTERING (GIA TRI GOC):")
+        logger.info("%-10s | %-8s | %-12s | %-12s | %-12s", "Cluster", "N", "Age (mean)", "Income (mean)", "Dep_Ratio (mean)")
+        logger.info("-" * 70)
+        
+        for cluster_id in sorted(df['cluster'].unique()):
+            sub = df[df['cluster'] == cluster_id]
+            logger.info("%-10d | %8d | %12.2f | %12.0f | %12.4f",
+                       cluster_id, len(sub), sub['Age'].mean(), sub['Income'].mean(), sub['Dependency_Ratio'].mean())
+        
+        logger.info("\nRaw data analysis complete\n")
+        
+        # Age vs Income plot
+        try:
+            sns.set(style="whitegrid")
+            fig, ax = plt.subplots(figsize=(12, 8))
+            sns.scatterplot(data=df, x='Age', y='Income', hue='cluster', palette=palette, 
+                           s=60, ax=ax, alpha=0.6, edgecolor='black', linewidth=0.5)
+            ax.set_ylabel('Income (Gia tri goc)', fontsize=13, fontweight='bold')
+            ax.set_xlabel('Age (Gia tri goc)', fontsize=13, fontweight='bold')
+            ax.set_title(f'Age vs Income theo Cluster - {dataset_name}', fontsize=15, fontweight='bold')
+            ax.legend(title='Cluster', fontsize=11, title_fontsize=12, loc='best', framealpha=0.9)
+            ax.grid(True, alpha=0.3, linestyle='--')
+            plt.tight_layout()
+            save_plot(fig, f"age_vs_income_raw_{dataset_type.lower()}.png", subdir)
+        except Exception as e:
+            logger.warning("Khong the tao bieu do Age vs Income: %s", str(e))
+        
+        # Income boxplot
+        try:
+            fig, ax = plt.subplots(figsize=(10, 6))
+            sns.boxplot(x='cluster', y='Income', data=df, palette=palette, ax=ax, width=0.6)
+            ax.set_title(f'Boxplot Income (Gia tri goc) - {dataset_name}', fontsize=15, fontweight='bold')
+            ax.set_xlabel('Cluster', fontsize=13, fontweight='bold')
+            ax.set_ylabel('Income (Gia tri goc)', fontsize=13, fontweight='bold')
+            ax.grid(True, alpha=0.3, axis='y', linestyle='--')
+            plt.tight_layout()
+            save_plot(fig, f"boxplot_income_raw_{dataset_type.lower()}.png", subdir)
+        except Exception as e:
+            logger.warning("Khong the tao boxplot Income: %s", str(e))
+    
+    # ============================================================================
+    # TỔNG HỢP KẾT QUẢ
+    # ============================================================================
+    logger.info("Hoan tat phan tich dataset: %s\n", dataset_name)
+    
+    return {
+        'dataset_name': dataset_name,
+        'dataset_type': dataset_type,
+        'chosen_k': int(chosen_k),
+        'inertia': float(inertia_final),
+        'silhouette': float(sil_final) if not np.isnan(sil_final) else None,
+        'calinski_harabasz': float(ch_final) if not np.isnan(ch_final) else None,
+        'davies_bouldin': float(db_final) if not np.isnan(db_final) else None,
+        'cluster_balance_ratio': float(advanced_metrics['cluster_balance_ratio']),
+        'compactness_separation_score': float(advanced_metrics['compactness_separation_score']),
+        'misclassified_count': int(total_misclassified),
+        'misclassified_percent': float(total_misclassified / len(X) * 100),
+        'cluster_sizes': counts.tolist(),
+        'total_points': int(len(X))
+    }
 
-    # 11. Save labels appended to original df if desired
-    out_labels_path = os.path.join(graph_output_dir, "cluster_labels.csv")
-    df_out = df.copy()
-    df_out['cluster'] = labels_final
-    df_out.to_csv(out_labels_path, index=False)
-    logger.info("Saved cluster labels: %s", out_labels_path)
+# ================================================================================
+# HÀM SO SÁNH 2 DATASETS
+# ================================================================================
 
-    # 12. Export final report summary (printed to log as well)
-    logger.info("\n" + "="*60)
-    logger.info("FINAL REPORT SUMMARY")
-    logger.info("="*60)
-    logger.info("Dataset: %s", dataset_path)
-    logger.info("Features used (%d): %s", len(feature_cols), ", ".join(feature_cols))
-    logger.info("Chosen K: %d", chosen_k)
-    logger.info("Inertia: %.4f", inertia_final)
-    logger.info("Silhouette: %.4f", sil_final)
-    logger.info("Calinski-Harabasz: %.4f", ch_final)
-    logger.info("Davies-Bouldin: %.4f", db_final)
-    logger.info("Cluster sizes:")
-    for u, c in zip(unique, counts):
-        logger.info("  Cluster %d : %d", int(u), int(c))
-    logger.info("Outputs (graphs) saved to: %s", graph_output_dir)
-    logger.info("Cluster labels saved to: %s", out_labels_path)
-    logger.info("Log file: %s", log_file)
-    logger.info("="*60)
+def compare_results(result_standard_only, result_robust_only):
+    """So sánh kết quả giữa 2 datasets và chọn dataset tốt nhất"""
+    print_section_header("SO SANH KET QUA GIUA 2 DATASETS")
+    
+    # Tạo bảng so sánh
+    comparison_data = {
+        'Metric': [
+            'K toi uu',
+            'Inertia',
+            'Silhouette Score',
+            'Calinski-Harabasz',
+            'Davies-Bouldin',
+            'Cluster Balance Ratio',
+            'Compactness-Separation',
+            'Misclassified (%)'
+        ],
+        'StandardOnly': [
+            result_standard_only['chosen_k'],
+            f"{result_standard_only['inertia']:.4f}",
+            f"{result_standard_only['silhouette']:.4f}" if result_standard_only['silhouette'] else "N/A",
+            f"{result_standard_only['calinski_harabasz']:.4f}" if result_standard_only['calinski_harabasz'] else "N/A",
+            f"{result_standard_only['davies_bouldin']:.4f}" if result_standard_only['davies_bouldin'] else "N/A",
+            f"{result_standard_only['cluster_balance_ratio']:.4f}",
+            f"{result_standard_only['compactness_separation_score']:.4f}",
+            f"{result_standard_only['misclassified_percent']:.2f}%"
+        ],
+        'RobustOnly': [
+            result_robust_only['chosen_k'],
+            f"{result_robust_only['inertia']:.4f}",
+            f"{result_robust_only['silhouette']:.4f}" if result_robust_only['silhouette'] else "N/A",
+            f"{result_robust_only['calinski_harabasz']:.4f}" if result_robust_only['calinski_harabasz'] else "N/A",
+            f"{result_robust_only['davies_bouldin']:.4f}" if result_robust_only['davies_bouldin'] else "N/A",
+            f"{result_robust_only['cluster_balance_ratio']:.4f}",
+            f"{result_robust_only['compactness_separation_score']:.4f}",
+            f"{result_robust_only['misclassified_percent']:.2f}%"
+        ]
+    }
+    
+    df_comparison = pd.DataFrame(comparison_data)
+    logger.info("\n%s\n", df_comparison.to_string(index=False))
+    
+    # Voting để chọn dataset tốt nhất
+    votes = {'StandardOnly': 0, 'RobustOnly': 0}
+    
+    logger.info("╔═══════════════════════════════════════════════════════════╗")
+    logger.info("║              KET QUA VOTING CHON DATASET TOT NHAT         ║")
+    logger.info("╚═══════════════════════════════════════════════════════════╝\n")
+    
+    # 1. Silhouette (higher is better)
+    if result_standard_only['silhouette'] and result_robust_only['silhouette']:
+        if result_standard_only['silhouette'] > result_robust_only['silhouette']:
+            votes['StandardOnly'] += 1
+            logger.info("✓ Silhouette: StandardOnly THANG (%.4f vs %.4f)", 
+                       result_standard_only['silhouette'], result_robust_only['silhouette'])
+        else:
+            votes['RobustOnly'] += 1
+            logger.info("✓ Silhouette: RobustOnly THANG (%.4f vs %.4f)", 
+                       result_robust_only['silhouette'], result_standard_only['silhouette'])
+    
+    # 2. Calinski-Harabasz (higher is better)
+    if result_standard_only['calinski_harabasz'] and result_robust_only['calinski_harabasz']:
+        if result_standard_only['calinski_harabasz'] > result_robust_only['calinski_harabasz']:
+            votes['StandardOnly'] += 1
+            logger.info("✓ Calinski-Harabasz: StandardOnly THANG (%.4f vs %.4f)", 
+                       result_standard_only['calinski_harabasz'], result_robust_only['calinski_harabasz'])
+        else:
+            votes['RobustOnly'] += 1
+            logger.info("✓ Calinski-Harabasz: RobustOnly THANG (%.4f vs %.4f)", 
+                       result_robust_only['calinski_harabasz'], result_standard_only['calinski_harabasz'])
+    
+    # 3. Davies-Bouldin (lower is better)
+    if result_standard_only['davies_bouldin'] and result_robust_only['davies_bouldin']:
+        if result_standard_only['davies_bouldin'] < result_robust_only['davies_bouldin']:
+            votes['StandardOnly'] += 1
+            logger.info("✓ Davies-Bouldin: StandardOnly THANG (%.4f vs %.4f)", 
+                       result_standard_only['davies_bouldin'], result_robust_only['davies_bouldin'])
+        else:
+            votes['RobustOnly'] += 1
+            logger.info("✓ Davies-Bouldin: RobustOnly THANG (%.4f vs %.4f)", 
+                       result_robust_only['davies_bouldin'], result_standard_only['davies_bouldin'])
+    
+    # 4. Cluster Balance (higher is better)
+    if result_standard_only['cluster_balance_ratio'] > result_robust_only['cluster_balance_ratio']:
+        votes['StandardOnly'] += 1
+        logger.info("✓ Cluster Balance: StandardOnly THANG (%.4f vs %.4f)", 
+                   result_standard_only['cluster_balance_ratio'], result_robust_only['cluster_balance_ratio'])
+    else:
+        votes['RobustOnly'] += 1
+        logger.info("✓ Cluster Balance: RobustOnly THANG (%.4f vs %.4f)", 
+                   result_robust_only['cluster_balance_ratio'], result_standard_only['cluster_balance_ratio'])
+    
+    # 5. Misclassified (lower is better)
+    if result_standard_only['misclassified_percent'] < result_robust_only['misclassified_percent']:
+        votes['StandardOnly'] += 1
+        logger.info("✓ Misclassified: StandardOnly THANG (%.2f%% vs %.2f%%)", 
+                   result_standard_only['misclassified_percent'], result_robust_only['misclassified_percent'])
+    else:
+        votes['RobustOnly'] += 1
+        logger.info("✓ Misclassified: RobustOnly THANG (%.2f%% vs %.2f%%)", 
+                   result_robust_only['misclassified_percent'], result_standard_only['misclassified_percent'])
+    
+    winner = max(votes, key=votes.get)
+    logger.info("\n" + "="*80)
+    logger.info("KET QUA VOTING".center(80))
+    logger.info("="*80)
+    logger.info("\nStandardOnly: %d phieu", votes['StandardOnly'])
+    logger.info("RobustOnly: %d phieu", votes['RobustOnly'])
+    logger.info("\nDATASET TOT NHAT: %s\n", winner.upper())
+    logger.info("="*80 + "\n")
+    
+    # Lưu comparison CSV
+    df_comparison.to_csv(COMPARISON_CSV, index=False)
+    logger.info("Da luu bang so sanh: %s\n", COMPARISON_CSV)
+    
+    return winner, df_comparison
 
-# -----------------------------
-# Entry point
-# -----------------------------
+# ================================================================================
+# PIPELINE CHÍNH
+# ================================================================================
+
+def run_dual_kmeans_pipeline():
+    """Chạy toàn bộ quy trình K-Means cho CẢ 2 datasets"""
+    
+    print_section_header("K-MEANS CLUSTERING - DEMOGRAPHIC (DUAL DATASET COMPARISON)")
+    logger.info("Bat dau quy trinh phan cum...")
+    logger.info("Thoi gian: %s\n", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+    
+    # ============================================================================
+    # LOAD DỮ LIỆU
+    # ============================================================================
+    print_section_header("LOAD DU LIEU")
+    
+    logger.info("Dang tai 2 datasets...\n")
+    df_standard_only = load_dataset(DATASET_STANDARD_ONLY, "StandardOnly")
+    df_robust_only = load_dataset(DATASET_ROBUST_ONLY, "RobustOnly")
+    
+    # Load dữ liệu gốc (cho phân tích post-hoc)
+    df_orig = None
+    if os.path.exists(ENGINEERED_CSV):
+        try:
+            df_orig = pd.read_csv(ENGINEERED_CSV)
+            logger.info("Da tai du lieu goc cho phan tich post-hoc: %s\n", ENGINEERED_CSV)
+        except Exception as e:
+            logger.warning("Khong the tai du lieu goc: %s\n", str(e))
+    
+    # ============================================================================
+    # CHẠY K-MEANS CHO TỪNG DATASET
+    # ============================================================================
+    result_standard_only = run_kmeans_single_dataset(
+        df_standard_only, 
+        "Standard Only", 
+        "StandardOnly",
+        "Standard_Robust",
+        df_orig
+    )
+    
+    result_robust_only = run_kmeans_single_dataset(
+        df_robust_only, 
+        "Robust Only", 
+        "RobustOnly",
+        "Standard_Robust",
+        df_orig
+    )
+    
+    # ============================================================================
+    # SO SÁNH KẾT QUẢ
+    # ============================================================================
+    winner, df_comparison = compare_results(result_standard_only, result_robust_only)
+    
+    # ============================================================================
+    # LƯU KẾT QUẢ
+    # ============================================================================
+    print_section_header("LUU KET QUA")
+    
+    # Lưu kết quả riêng cho từng dataset
+    df_result_standard_only = pd.DataFrame([result_standard_only])
+    df_result_standard_only.to_csv(RESULT_CSV_STANDARD_ONLY, index=False)
+    logger.info("Da luu ket qua StandardOnly: %s", RESULT_CSV_STANDARD_ONLY)
+    
+    df_result_robust_only = pd.DataFrame([result_robust_only])
+    df_result_robust_only.to_csv(RESULT_CSV_ROBUST_ONLY, index=False)
+    logger.info("Da luu ket qua RobustOnly: %s\n", RESULT_CSV_ROBUST_ONLY)
+    
+    # ============================================================================
+    # TỔNG KẾT
+    # ============================================================================
+    print_section_header("TONG KET KET QUA")
+    
+    logger.info("Dataset tot nhat: %s", winner.upper())
+    logger.info("\nDuong dan ket qua:")
+    logger.info("  - Bieu do chung: %s", os.path.join(GRAPH_BASE_DIR, "Standard_Robust"))
+    logger.info("  - Bao cao StandardOnly: %s", RESULT_CSV_STANDARD_ONLY)
+    logger.info("  - Bao cao RobustOnly: %s", RESULT_CSV_ROBUST_ONLY)
+    logger.info("  - Bang so sanh: %s", COMPARISON_CSV)
+    logger.info("  - Log file: %s", LOG_FILE)
+    logger.info("\n")
+
+# ================================================================================
+# MAIN ENTRY POINT
+# ================================================================================
+
 if __name__ == "__main__":
     try:
-        logger.info("K-Means pipeline started.")
-        run_kmeans_pipeline(dataset_path, graph_output_dir)
-        logger.info("K-Means pipeline finished successfully.")
+        run_dual_kmeans_pipeline()
+        
+        print_section_header("HOAN THANH")
+        logger.info("Quy trinh da hoan tat thanh cong")
+        
     except KeyboardInterrupt:
-        logger.info("Interrupted by user.")
+        logger.info("\nDa dung boi nguoi dung.")
     except Exception as e:
-        logger.exception("Unhandled exception: %s", str(e))
+        logger.exception("Loi khong xu ly duoc: %s", str(e))
         raise

@@ -1,0 +1,2 @@
+dataset_name,dataset_type,chosen_k,inertia,silhouette,calinski_harabasz,davies_bouldin,cluster_balance_ratio,compactness_separation_score,misclassified_count,misclassified_percent,cluster_sizes,total_points
+Robust Only,RobustOnly,3,973.938892358636,0.3505899333638102,1231.693657239438,0.9986523561586113,0.6253041362530414,8.216913257206686,27,1.3432835820895521,"[822, 514, 674]",2010

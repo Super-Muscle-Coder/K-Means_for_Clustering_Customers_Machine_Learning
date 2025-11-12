@@ -1,0 +1,97 @@
+====================================================================================================
+RFM FEATURE ENGINEERING REPORT (v5 - AUTO-DETECT TRANSFORM + AUTO PCA)
+====================================================================================================
+
+Generated : 2025-11-11 09:10:19
+Input     : C:\Project\Machine_Learning\Machine_Learning\dataset\Customer_Behavior_cleaned.csv
+Output    : C:\Project\Machine_Learning\Machine_Learning\dataset\Customer_Behavior_RFM.csv
+Strategy  : RFM Analysis + Auto-Detect Transform + Auto-Detect PCA
+
+IMPROVEMENTS (v5):
+----------------------------------------------------------------------------------------------------
+OK: Auto-detect transform method (Box-Cox for positive data, Yeo-Johnson for data with zeros)
+OK: AvgPerPurchase with auto-detected transform
+OK: Income_per_Family_Member with auto-detected transform
+OK: Auto-detect PCA for highly correlated pairs (|r| >= 0.7)
+OK: Applied PCA to 2 feature pair(s)
+OK: Better independence between clustering features
+OK: Full validation and visualization
+
+TRANSFORM METHOD DECISION LOGIC:
+----------------------------------------------------------------------------------------------------
+- Box-Cox: Used when min > 0 (data purely positive)
+- Yeo-Johnson: Used when min <= 0 (data contains zeros or negatives)
+- Auto-detection: Applied independently to each skewed feature
+- Threshold: Transform only if |skewness| > 1.0
+
+PCA REDUCTION LOGIC:
+----------------------------------------------------------------------------------------------------
+- Auto-detect high correlation pairs: |r| >= 0.7
+- Apply PCA(n_components=1) to composite features
+- Result: n_components=1 captures 90%+ variance from 2 correlated features
+- Benefit: Eliminates multicollinearity, improves K-Means clustering
+
+PCA REDUCTIONS APPLIED:
+----------------------------------------------------------------------------------------------------
+1. PC1_TotalPurchases_Total
+   Source features: TotalPurchases x Total_Spent
+   Correlation: 0.756
+   Variance explained: 87.81%
+   Formula: 0.7071×TotalPurchases + 0.7071×Total_Spent
+
+2. PC1_AvgPerPurchase_Income
+   Source features: AvgPerPurchase_Transformed x Income
+   Correlation: 0.795
+   Variance explained: 89.73%
+   Formula: 0.7071×AvgPerPurchase_Transformed + 0.7071×Income
+
+FINAL FEATURES (4 columns):
+----------------------------------------------------------------------------------------------------
+
+1. Recency
+
+2. Income_per_Family_Member_Transformed
+
+3. PC1_TotalPurchases_Total
+   [PCA Composite Feature]
+
+4. PC1_AvgPerPurchase_Income
+   [PCA Composite Feature]
+
+CORRELATION ANALYSIS:
+----------------------------------------------------------------------------------------------------
+Max correlation : 0.926
+Between         : Income_per_Family_Member_Transformed ↔ PC1_AvgPerPurchase_Income
+
+PROCESSING LOG:
+----------------------------------------------------------------------------------------------------
+  1. [09:10:19] Load data
+     Shape: (2010, 24)
+  2. [09:10:19] Create TotalPurchases
+     Mean: 14.9, Skew: 0.249
+  3. [09:10:19] Create Total_Spent
+     Mean: 608, Skew: 0.857
+  4. [09:10:19] Create AvgPerPurchase
+     Mean: 32.69, Skew: 1.315
+  5. [09:10:19] Transform AvgPerPurchase
+     Yeo-Johnson: Skew 1.315 -> -0.020
+  6. [09:10:19] Create Income_per_Family_Member
+     Mean: 19,629, Skew: 1.003
+  7. [09:10:19] Transform Income_per_Family_Member
+     Box-Cox: Skew 1.003 -> -0.006
+  8. [09:10:19] Apply PCA
+     PC1_TotalPurchases_Total: Variance=87.81%, Corr(TotalPurchases, Total_Spent)=0.756
+  9. [09:10:19] Apply PCA
+     PC1_AvgPerPurchase_Income: Variance=89.73%, Corr(AvgPerPurchase_Transformed, Income)=0.795
+ 10. [09:10:19] PCA Complete
+     Applied to 2 pair(s)
+ 11. [09:10:19] Select final features
+     4 features selected
+ 12. [09:10:19] Validate features
+     All checks completed
+ 13. [09:10:19] Export dataset
+     C:\Project\Machine_Learning\Machine_Learning\dataset\Customer_Behavior_RFM.csv
+
+====================================================================================================
+END OF REPORT
+====================================================================================================

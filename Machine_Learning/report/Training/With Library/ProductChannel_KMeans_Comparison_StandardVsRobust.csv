@@ -1,0 +1,9 @@
+Metric,StandardOnly,RobustOnly
+K toi uu,3,4
+Inertia,4507.3656,1654.8876
+Silhouette Score,0.3012,0.2848
+Calinski-Harabasz,786.4902,775.5267
+Davies-Bouldin,1.2531,1.0968
+Cluster Balance Ratio,0.6806,0.6854
+Compactness-Separation,4.0152,7.6375
+Misclassified (%),3.88%,2.44%

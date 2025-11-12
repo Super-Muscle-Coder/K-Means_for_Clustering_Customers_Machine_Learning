@@ -1,0 +1,9 @@
+Metric,StandardOnly,RobustOnly
+Optimal K,2,2
+Inertia,3857.1077,1413.5825
+Silhouette Score,0.4374,0.4394
+Calinski-Harabasz,2177.6359,2245.5381
+Davies-Bouldin,0.9008,0.8860
+Cluster Balance Ratio,0.8998,0.8891
+Compactness-Separation,6.0077,10.0814
+Misclassified (%),0.40%,0.20%
