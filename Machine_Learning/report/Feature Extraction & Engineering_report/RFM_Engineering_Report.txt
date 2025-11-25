@@ -2,7 +2,7 @@
 RFM FEATURE ENGINEERING REPORT (v5 - AUTO-DETECT TRANSFORM + AUTO PCA)
 ====================================================================================================
 
-Generated : 2025-11-11 09:10:19
+Generated : 2025-11-15 12:44:17
 Input     : C:\Project\Machine_Learning\Machine_Learning\dataset\Customer_Behavior_cleaned.csv
 Output    : C:\Project\Machine_Learning\Machine_Learning\dataset\Customer_Behavior_RFM.csv
 Strategy  : RFM Analysis + Auto-Detect Transform + Auto-Detect PCA
@@ -65,31 +65,31 @@ Between         : Income_per_Family_Member_Transformed ↔ PC1_AvgPerPurchase_In
 
 PROCESSING LOG:
 ----------------------------------------------------------------------------------------------------
-  1. [09:10:19] Load data
+  1. [12:44:17] Load data
      Shape: (2010, 24)
-  2. [09:10:19] Create TotalPurchases
+  2. [12:44:17] Create TotalPurchases
      Mean: 14.9, Skew: 0.249
-  3. [09:10:19] Create Total_Spent
+  3. [12:44:17] Create Total_Spent
      Mean: 608, Skew: 0.857
-  4. [09:10:19] Create AvgPerPurchase
+  4. [12:44:17] Create AvgPerPurchase
      Mean: 32.69, Skew: 1.315
-  5. [09:10:19] Transform AvgPerPurchase
+  5. [12:44:17] Transform AvgPerPurchase
      Yeo-Johnson: Skew 1.315 -> -0.020
-  6. [09:10:19] Create Income_per_Family_Member
+  6. [12:44:17] Create Income_per_Family_Member
      Mean: 19,629, Skew: 1.003
-  7. [09:10:19] Transform Income_per_Family_Member
+  7. [12:44:17] Transform Income_per_Family_Member
      Box-Cox: Skew 1.003 -> -0.006
-  8. [09:10:19] Apply PCA
+  8. [12:44:17] Apply PCA
      PC1_TotalPurchases_Total: Variance=87.81%, Corr(TotalPurchases, Total_Spent)=0.756
-  9. [09:10:19] Apply PCA
+  9. [12:44:17] Apply PCA
      PC1_AvgPerPurchase_Income: Variance=89.73%, Corr(AvgPerPurchase_Transformed, Income)=0.795
- 10. [09:10:19] PCA Complete
+ 10. [12:44:17] PCA Complete
      Applied to 2 pair(s)
- 11. [09:10:19] Select final features
+ 11. [12:44:17] Select final features
      4 features selected
- 12. [09:10:19] Validate features
+ 12. [12:44:17] Validate features
      All checks completed
- 13. [09:10:19] Export dataset
+ 13. [12:44:17] Export dataset
      C:\Project\Machine_Learning\Machine_Learning\dataset\Customer_Behavior_RFM.csv
 
 ====================================================================================================

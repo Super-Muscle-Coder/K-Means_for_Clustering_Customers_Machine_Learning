@@ -1499,6 +1499,162 @@ KẾT QUẢ PHÂN TÍCH:
             print(f"    Chi tiết lỗi: {traceback.format_exc()}")
 
     #=================================================================================================================================
+    # HÀM VẼ MA TRẬN TƯƠNG QUAN (CORRELATION HEATMAP)
+    def plot_correlation_matrix(self):
+        """
+        Vẽ ma trận tương quan dạng heatmap
+        Hiển thị mối quan hệ giữa các biến số
+        """
+        try:
+            output_dir = self._create_output_directory()
+            
+            # Lọc các cột số
+            numerical_data = self.dataset.select_dtypes(include=[np.number])
+            
+            if numerical_data.empty:
+                print("Không có cột số để phân tích tương quan")
+                return
+            
+            # Tính ma trận tương quan
+            correlation_matrix = numerical_data.corr()
+            
+            # Tạo figure
+            fig, ax = plt.subplots(figsize=(14, 10))
+            
+            # Vẽ heatmap
+            sns.heatmap(
+                correlation_matrix,
+                annot=True,  # Hiển thị giá trị
+                fmt='.2f',   # Format 2 chữ số thập phân
+                cmap='coolwarm',  # Màu sắc
+                center=0,    # Tâm màu tại 0
+                square=True, # Ô vuông
+                linewidths=0.5,  # Đường viền
+                cbar_kws={'label': 'Correlation Coefficient'},
+                ax=ax
+            )
+            
+            # Thiết lập title và labels
+            ax.set_title('Correlation Matrix - Tương quan giữa các biến số', 
+                        fontsize=16, fontweight='bold', pad=20)
+            
+            plt.xticks(rotation=45, ha='right')
+            plt.yticks(rotation=0)
+            plt.tight_layout()
+            
+            # Lưu biểu đồ
+            filename = "correlation_matrix.png"
+            filepath = os.path.join(output_dir, filename)
+            plt.savefig(filepath, dpi=300, bbox_inches='tight', 
+                       facecolor='white', edgecolor='none')
+            plt.close()
+            
+            print(f"Đã lưu biểu đồ Correlation Matrix: {filename}")
+            print(f"   Đường dẫn: {filepath}")
+            self.log_action("Vẽ ma trận tương quan", f"Đã tạo correlation heatmap")
+            
+        except Exception as e:
+            print(f"Lỗi khi vẽ correlation matrix: {e}")
+            import traceback
+            print(f"   Chi tiết lỗi: {traceback.format_exc()}")
+
+    #=================================================================================================================================
+    # HÀM VẼ PHÂN PHỐI DỮ LIỆU (DISTRIBUTION PLOTS) - CẢI TIẾN
+    def plot_distributions(self):
+        """
+        Vẽ biểu đồ phân phối cho tất cả các biến số
+        Hiển thị histogram cho từng cột
+        KDE chỉ được vẽ nếu dữ liệu có phương sai đủ cao
+        """
+        try:
+            output_dir = self._create_output_directory()
+            
+            # Lọc các cột số, loại bỏ ID
+            numerical_cols = self.dataset.select_dtypes(include=[np.number]).columns
+            numerical_cols = [col for col in numerical_cols if col != 'ID']
+            
+            if len(numerical_cols) == 0:
+                print("Không có cột số để vẽ phân phối")
+                return
+            
+            # Tính số hàng và cột của subplot
+            n_cols = 4
+            n_rows = (len(numerical_cols) + n_cols - 1) // n_cols
+            
+            # Tạo figure với subplots
+            fig, axes = plt.subplots(n_rows, n_cols, figsize=(18, 4*n_rows))
+            axes = axes.flatten()  # Flatten để dễ iterate
+            
+            # Vẽ biểu đồ cho từng cột
+            for idx, col in enumerate(numerical_cols):
+                ax = axes[idx]
+                data = self.dataset[col].dropna()
+                
+                if len(data) == 0:
+                    continue
+                
+                # Vẽ histogram
+                ax.hist(data, bins=30, alpha=0.6, color='skyblue', 
+                       edgecolor='black', linewidth=0.5)
+                
+                # Kiểm tra phương sai trước khi vẽ KDE
+                data_std = data.std()
+                
+                # Chỉ vẽ KDE nếu dữ liệu có phương sai đủ cao (std > 0.01)
+                if data_std > 0.01:
+                    try:
+                        ax2 = ax.twinx()
+                        data.plot(kind='kde', ax=ax2, color='red', linewidth=2, label='KDE')
+                        ax2.set_ylabel('Density', fontsize=10, fontweight='bold')
+                        ax2.grid(False)
+                    except Exception as kde_error:
+                        # Nếu KDE vẫn lỗi, bỏ qua
+                        pass
+                
+                # Thiết lập labels
+                ax.set_xlabel(col, fontsize=11, fontweight='bold')
+                ax.set_ylabel('Frequency', fontsize=10, fontweight='bold')
+                ax.set_title(f'Distribution: {col}', fontsize=12, fontweight='bold')
+                ax.grid(True, alpha=0.3, linestyle='--')
+                
+                # Thêm thông tin thống kê
+                mean_val = data.mean()
+                median_val = data.median()
+                std_val = data.std()
+                
+                stats_text = f'μ={mean_val:.2f}\nmedian={median_val:.2f}\nσ={std_val:.2f}'
+                ax.text(0.98, 0.97, stats_text, transform=ax.transAxes,
+                       fontsize=9, verticalalignment='top', horizontalalignment='right',
+                       bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8))
+            
+            # Ẩn các subplot không dùng
+            for idx in range(len(numerical_cols), len(axes)):
+                axes[idx].set_visible(False)
+            
+            # Thiết lập title chính
+            fig.suptitle('Distribution Analysis - Phân tích phân phối dữ liệu', 
+                        fontsize=16, fontweight='bold', y=0.995)
+            
+            plt.tight_layout()
+            
+            # Lưu biểu đồ
+            filename = "distribution_analysis.png"
+            filepath = os.path.join(output_dir, filename)
+            plt.savefig(filepath, dpi=300, bbox_inches='tight', 
+                       facecolor='white', edgecolor='none')
+            plt.close()
+            
+            print(f"Đã lưu biểu đồ Distribution Analysis: {filename}")
+            print(f"   Đường dẫn: {filepath}")
+            print(f"   Số cột phân tích: {len(numerical_cols)}")
+            self.log_action("Vẽ biểu đồ phân phối", 
+                          f"Đã tạo distribution plots cho {len(numerical_cols)} cột")
+            
+        except Exception as e:
+            print(f"Lỗi khi vẽ distribution plots: {e}")
+            import traceback
+            print(f"   Chi tiết lỗi: {traceback.format_exc()}")
+    #=================================================================================================================================
     # HÀM CON PHÂN TÍCH TÍNH NHẤT QUÁN CỦA DỮ LIỆU PHÂN LOẠI
     def _analyze_categorical_consistency(self):
         """
@@ -1629,6 +1785,12 @@ KẾT QUẢ PHÂN TÍCH:
             # ==========================================
             final_summary = self._generate_final_summary(analysis_results, start_time) # Gọi hàm tóm tắt kết quả
             
+            # ==========================================
+            # BƯỚC 3.5: VẼ BIỂU ĐỒ PHÂN TÍCH
+            # ==========================================
+            self.plot_correlation_matrix()      # Vẽ correlation heatmap
+            self.plot_distributions()            # Vẽ distribution plots
+
             # ==========================================
             # BƯỚC 4: HIỂN THỊ LOG ACTIONS
             # ==========================================

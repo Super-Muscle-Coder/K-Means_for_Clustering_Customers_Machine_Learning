@@ -2,7 +2,7 @@
 DEMOGRAPHIC FEATURE ENGINEERING REPORT (IMPROVED - OPTION C)
 ====================================================================================================
 
-Generated       : 2025-11-11 09:10:14
+Generated       : 2025-11-15 12:44:13
 Input           : C:\Project\Machine_Learning\Machine_Learning\dataset\Customer_Behavior_cleaned.csv
 Output          : C:\Project\Machine_Learning\Machine_Learning\dataset\Customer_Behavior_Demographic.csv
 Strategy        : Option C (Exclude Ordinal/Nominal from Clustering)
@@ -99,31 +99,31 @@ Post-hoc features       : 2 (Education_ord, Life_Stage)
 
 PROCESSING LOG:
 ----------------------------------------------------------------------------------------------------
-  1. [09:10:14] Load data
+  1. [12:44:13] Load data
      Details: Shape: (2010, 24)
-  2. [09:10:14] Create Age
+  2. [12:44:13] Create Age
      Details: Range: [18, 100], Skew: 0.137
-  3. [09:10:14] Create TotalChildren
+  3. [12:44:13] Create TotalChildren
      Details: Distribution: {0: 568, 1: 1021, 2: 376, 3: 45}
-  4. [09:10:14] Create Income_per_Family_Member
+  4. [12:44:13] Create Income_per_Family_Member
      Details: Mean: 19,629, Skew: 1.003
-  5. [09:10:14] Create Marital_Encoded
+  5. [12:44:13] Create Marital_Encoded
      Details: Distribution: {0: 721, 1: 508, 2: 781}
-  6. [09:10:14] Create Life_Stage
+  6. [12:44:13] Create Life_Stage
      Details: Distribution: {0: 451, 1: 525, 2: 321, 3: 223, 4: 490} (POST-HOC)
-  7. [09:10:14] Create Dependency_Ratio
+  7. [12:44:13] Create Dependency_Ratio
      Details: Mean: 0.862, Skew: 1.735, Zero: 568
-  8. [09:10:14] Transform Age
+  8. [12:44:13] Transform Age
      Details: No transform needed
-  9. [09:10:14] Transform Income
+  9. [12:44:13] Transform Income
      Details: No transform needed
- 10. [09:10:14] Transform Dependency_Ratio
+ 10. [12:44:13] Transform Dependency_Ratio
      Details: Yeo-Johnson: Skew 1.735 -> 0.089
- 11. [09:10:14] Select final features
+ 11. [12:44:13] Select final features
      Details: 5 features (3 clustering + 2 post-hoc)
- 12. [09:10:14] Validate features
+ 12. [12:44:13] Validate features
      Details: All checks completed
- 13. [09:10:14] Export dataset
+ 13. [12:44:13] Export dataset
      Details: C:\Project\Machine_Learning\Machine_Learning\dataset\Customer_Behavior_Demographic.csv
 
 ====================================================================================================

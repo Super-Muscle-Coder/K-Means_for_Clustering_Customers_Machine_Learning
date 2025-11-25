@@ -34,42 +34,40 @@ warnings.filterwarnings('ignore')
 
 class DemographicFeatureEngineering:
     """
-    IMPROVED Feature Engineering cho DEMOGRAPHIC CLUSTERING.
-    
-    STRATEGY: OPTION C - Exclude Ordinal/Nominal from Clustering
-    - CLUSTERING FEATURES: Age, Income, Dependency_Ratio (3 pure continuous features)
-    - POST-HOC FEATURES: Education_ord, Life_Stage (for analysis AFTER clustering)
-    
-    IMPROVEMENTS:
-    ✅ Auto-detect transform method: Box-Cox vs Yeo-Johnson
-    ✅ Box-Cox dung cho data thuần dương (min > 0)
-    ✅ Yeo-Johnson dung cho data có giá trị 0 hoặc âm
-    ✅ Exclude Education_ord from clustering (save for post-hoc)
-    ✅ Keep Life_Stage as categorical (no one-hot) for post-hoc
-    ✅ No timestamp in filenames (overwrite mode)
-    ✅ Full statistics logging in output
-    ✅ Visualization plots included
-    
-    FINAL OUTPUT FEATURES (5 columns):
-    CLUSTERING FEATURES (3):
-    1. Age                    (continuous, transform if skewed)
-    2. Income                 (continuous, transform if skewed)
-    3. Dependency_Ratio       (continuous, transform if skewed)
-    
-    POST-HOC FEATURES (2):
-    4. Education_ord          (ordinal 0-4, NOT for clustering)
-    5. Life_Stage             (categorical 0-4, NOT for clustering)
-    
-    PIPELINE:
-    Step 1  : Load data
-    Step 2  : Create base features (Age, TotalChildren, Income_per_Family_Member)
-    Step 3  : Create Life_Stage (categorical, for post-hoc only)
-    Step 4  : Create Dependency_Ratio (clustering feature)
-    Step 5  : Auto-detect and apply transform (Box-Cox or Yeo-Johnson)
-    Step 6  : Select final 5 features (3 clustering + 2 post-hoc)
-    Step 7  : Validate features
-    Step 8  : Export dataset + full report
-    Step 9  : Generate visualizations
+    Feature Engineering
+    Chiến lược: 
+    – Loại bỏ biến Ordinal/Nominal khỏi quá trình clustering
+    - Biến dùng để clustering: Age, Income, Dependency_Ratio (3 biến liên tục thuần túy)
+    - Biến hậu kiểm (post-hoc): Education_ord, Life_Stage (chỉ dùng để phân tích sau khi clustering)
+    - Tự động phát hiện phương pháp biến đổi: Box-Cox hoặc Yeo-Johnson
+    - Box-Cox dùng cho dữ liệu thuần dương (min > 0)
+    - Yeo-Johnson dùng cho dữ liệu có giá trị 0 hoặc âm
+    - Loại Education_ord khỏi clustering (chỉ giữ cho phân tích hậu kiểm)
+    - Giữ Life_Stage ở dạng phân loại (không one-hot) cho hậu kiểm
+    - Không thêm timestamp vào tên file (chế độ ghi đè)
+    - Ghi log thống kê đầy đủ trong output
+    - Bao gồm biểu đồ trực quan hóa
+
+    Các biến đầu ra cuối cùng (5 cột):
+    - Biến clustering (3):
+        + Age (liên tục, biến đổi nếu phân phối lệch)
+        + Income (liên tục, biến đổi nếu phân phối lệch)
+        + Dependency_Ratio (liên tục, biến đổi nếu phân phối lệch)
+
+    - Biến hậu kiểm (2):
+        + Education_ord (ordinal 0–4, không dùng cho clustering)
+        + Life_Stage (categorical 0–4, không dùng cho clustering)
+
+    Pipeline:
+    - Bước 1: Load dữ liệu
+    - Bước 2: Tạo biến cơ sở (Age, TotalChildren, Income_per_Family_Member)
+    - Bước 3: Tạo Life_Stage (biến phân loại, chỉ dùng hậu kiểm)
+    - Bước 4: Tạo Dependency_Ratio (biến dùng cho clustering)
+    - Bước 5: Tự động phát hiện và áp dụng biến đổi (Box-Cox hoặc Yeo-Johnson)
+    - Bước 6: Chọn 5 biến cuối cùng (3 clustering + 2 hậu kiểm)
+    - Bước 7: Kiểm tra/validate các biến
+    - Bước 8: Xuất dataset + báo cáo đầy đủ
+    - Bước 9: Tạo biểu đồ trực quan hóa
     """
     
     def __init__(self, input_path, output_dir, report_dir):
@@ -1192,58 +1190,45 @@ class DemographicFeatureEngineering:
 
 class ProductChannelFeatureEngineering:
     """
-    IMPROVED v5 Feature Engineering cho PRODUCT + CHANNEL CLUSTERING.
-    
-    IMPROVEMENTS (v5 - AUTO-DETECT TRANSFORM + AUTO PCA):
-    ✅ Auto-detect transform method: Box-Cox vs Yeo-Johnson
-    ✅ Box-Cox dung cho data thuần dương (min > 0)
-    ✅ Yeo-Johnson dung cho data có giá trị 0 hoặc âm
-    ✅ Transform Total_Spent (auto-detect) - reduce skewness
-    ✅ DROP AvgPerPurchase_Transformed (correlation 0.966 with Total_Spent_Transformed)
-    ✅ Keep TotalPurchases (Frequency) - independent
-    ✅ Drop Product_Entropy (redundant with HHI)
-    ✅ AUTO-DETECT PCA for highly correlated pairs (|r| >= 0.7)
-    ✅ 4-5 clustering features (down from 5-6) - better independence
-    ✅ Full visualization suite (histograms, boxplots, heatmap, before/after)
-    
-    DESIGN PHILOSOPHY:
-    ✅ Focus on "HOW MUCH they buy" NOT "WHAT they buy"
-    ✅ Volume (Total_Spent + Frequency) + Diversity (HHI) + Channel (Store/Web)
-    ✅ Remove mathematically dependent features (AOV = Total_Spent / Frequency)
-    ✅ Apply PCA to eliminate multicollinearity (|correlation| >= 0.7)
-    
-    FINAL OUTPUT FEATURES (4-5 clustering + 8 reference):
-    
-    CLUSTERING FEATURES (4-5 features):
-    - If correlation >= 0.7: Apply PCA → PC1 composite feature (4 total features)
-    - If correlation < 0.7: Keep all 5 original features
-    
-    Default 5 features:
-    1. Total_Spent_Transformed        (Auto-detected transform - monetary volume)
-    2. TotalPurchases                 (Frequency - transaction count)
-    3. Product_HHI                    (Concentration: bulk vs diversified)
-    4. Store_Preference               (Channel: in-store ratio)
-    5. Web_Engagement                 (Digital behavior: web visits)
-    
-    REFERENCE FEATURES (8 features - POST-HOC):
-    - Wine/Meat/Fish/Fruit/Sweet/Gold_Preference (product mix description)
-    - Dominant_Product, Top_Product_Share (cluster labeling)
-    
-    PIPELINE:
-    Step 1  : Load data
-    Step 2  : Create Total_Spent
-    Step 3  : Transform Total_Spent (auto-detect Box-Cox or Yeo-Johnson)
-    Step 4  : Create TotalPurchases
-    Step 5  : Create product preference ratios (reference)
-    Step 6  : Create Product_HHI
-    Step 7  : Create Dominant_Product
-    Step 8  : Create Store_Preference
-    Step 9  : Create Web_Engagement
-    Step 10 : Identify highly correlated pairs & apply PCA if needed
-    Step 11 : Select final features (4-5 clustering + 8 reference)
-    Step 12 : Validate
-    Step 13 : Export dataset + report
-    Step 14 : Generate visualizations
+    Feature Engineering
+    Triết lý thiết kế:
+    - Tập trung vào “MUA BAO NHIÊU” chứ không phải “MUA CÁI GÌ”
+    - Khối lượng (Total_Spent + Frequency) + Đa dạng (HHI) + Kênh (Store/Web)
+    - Loại bỏ các biến phụ thuộc toán học (AOV = Total_Spent / Frequency)
+    - Áp dụng PCA để loại bỏ đa cộng tuyến (correlation ≥ 0.7)
+
+    Các biến đầu ra cuối cùng (4–5 biến clustering + 8 biến tham chiếu):
+    - Biến clustering (4–5 biến):
+        + Nếu tương quan ≥ 0.7: Áp dụng PCA → PC1 (tổng hợp) → còn 4 biến
+        + Nếu tương quan < 0.7: Giữ nguyên 5 biến gốc
+
+    - 5 biến mặc định:
+        + Total_Spent_Transformed (biến đổi tự động – khối lượng chi tiêu)
+        + TotalPurchases (tần suất – số lượng giao dịch)
+        + Product_HHI (mức độ tập trung: mua nhiều một loại hay đa dạng)
+        + Store_Preference (kênh: tỷ lệ mua tại cửa hàng)
+        + Web_Engagement (hành vi số: lượt truy cập web)
+
+    - Biến tham chiếu (8 biến – hậu kiểm):
+        + Wine/Meat/Fish/Fruit/Sweet/Gold_Preference (mô tả cơ cấu sản phẩm)
+        + Dominant_Product, Top_Product_Share (dùng để gán nhãn cluster)
+
+    Pipeline:
+    - Bước 1: Load dữ liệu
+    - Bước 2: Tạo Total_Spent
+    - Bước 3: Biến đổi Total_Spent (tự động Box-Cox hoặc Yeo-Johnson)
+    - Bước 4: Tạo TotalPurchases
+    - Bước 5: Tạo tỷ lệ ưu tiên sản phẩm (biến tham chiếu)
+    - Bước 6: Tạo Product_HHI
+    - Bước 7: Xác định Dominant_Product
+    - Bước 8: Tạo Store_Preference
+    - Bước 9: Tạo Web_Engagement
+    - Bước 10: Xác định các cặp có tương quan cao & áp dụng PCA nếu cần
+    - Bước 11: Chọn biến cuối cùng (4–5 clustering + 8 tham chiếu)
+    - Bước 12: Kiểm tra/validate
+    - Bước 13: Xuất dataset + báo cáo
+    - Bước 14: Tạo biểu đồ trực quan hóa
+
     """
     
     def __init__(self, input_path, output_dir, report_dir):
@@ -2409,52 +2394,33 @@ class ProductChannelFeatureEngineering:
 
 class RFMFeatureEngineering:
     """
-    Feature Engineering cho RFM CLUSTERING (Customer Value Segmentation).
-    
-    MỤC TIÊU: Phan khuc khach hang theo gia tri kinh te (RFM Analysis)
-    
-    IMPROVEMENTS (v5 - AUTO-DETECT TRANSFORM + AUTO PCA):
-    ✅ Auto-detect transform method: Box-Cox vs Yeo-Johnson
-    ✅ Box-Cox dung cho data thuan duong (min > 0)
-    ✅ Yeo-Johnson dung cho data co gia tri 0 hoac am
-    ✅ Transform AvgPerPurchase (auto-detect) - reduce skewness
-    ✅ Transform Income_per_Family_Member (auto-detect) - reduce skewness
-    ✅ AUTO-DETECT PCA for highly correlated pairs (|r| >= 0.7)
-    ✅ 4-6 clustering features (down from 6) - better independence
-    ✅ Full visualization suite (histograms, boxplots, heatmap, before/after)
-    
-    FINAL OUTPUT FEATURES (4-6 clustering):
-    - If correlation >= 0.7: Apply PCA → PC1 composite feature (5 total features)
-    - If correlation < 0.7: Keep all 6 original features
-    
-    Default 6 features:
-    1. Recency                              (days since last purchase)
-    2. TotalPurchases                       (frequency - transaction count)
-    3. Total_Spent                          (monetary - total spending)
-    4. AvgPerPurchase_Transformed           (auto-detected transform - AOV)
-    5. Income                               (financial capacity)
-    6. Income_per_Family_Member_Transformed (auto-detected transform - financial pressure)
-    
-    PIPELINE:
-    Step 1  : Load data
-    Step 2  : Create TotalPurchases (sum Num*Purchases)
-    Step 3  : Create Total_Spent (sum Mnt*)
-    Step 4  : Create AvgPerPurchase (AOV = Total_Spent / TotalPurchases)
-    Step 5  : Transform AvgPerPurchase (auto-detect Box-Cox or Yeo-Johnson)
-    Step 6  : Create Income_per_Family_Member (Income / (2 + TotalChildren))
-    Step 7  : Transform Income_per_Family_Member (auto-detect Box-Cox or Yeo-Johnson)
-    Step 8  : Identify highly correlated pairs & apply PCA if needed
-    Step 9  : Select final features (4-6 clustering)
-    Step 10 : Validate
-    Step 11 : Export dataset + report
-    Step 12 : Generate visualizations
-    
-    INPUT:
-    - CSV: Customer_Behavior_cleaned.csv
+    Feature Engineering
+    Mục tiêu: Phân khúc khách hàng theo giá trị kinh tế (RFM Analysis)
+    Các biến đầu ra cuối cùng (4–6 biến clustering):
+    - Nếu tương quan ≥ 0.7: Áp dụng PCA → PC1 (tổng hợp) → còn 5 biến
+    - Nếu tương quan < 0.7: Giữ nguyên 6 biến gốc
 
-    OUTPUT:
-    - CSV: Customer_Behavior_RFM.csv
-    - Report: RFM_Engineering_Report.txt
+    - 6 biến mặc định:
+        + Recency (số ngày kể từ lần mua gần nhất)
+        + TotalPurchases (tần suất – số lượng giao dịch)
+        + Total_Spent (giá trị tiền tệ – tổng chi tiêu)
+        + AvgPerPurchase_Transformed (biến đổi tự động – AOV)
+        + Income (khả năng tài chính)
+        + Income_per_Family_Member_Transformed (biến đổi tự động – áp lực tài chính)
+
+    Pipeline:
+    - Bước 1: Load dữ liệu
+    - Bước 2: Tạo TotalPurchases (tổng số lượng giao dịch)
+    - Bước 3: Tạo Total_Spent (tổng chi tiêu)
+    - Bước 4: Tạo AvgPerPurchase (AOV = Total_Spent / TotalPurchases)
+    - Bước 5: Biến đổi AvgPerPurchase (tự động Box-Cox hoặc Yeo-Johnson)
+    - Bước 6: Tạo Income_per_Family_Member (Income / (2 + TotalChildren))
+    - Bước 7: Biến đổi Income_per_Family_Member (tự động Box-Cox hoặc Yeo-Johnson)
+    - Bước 8: Xác định các cặp có tương quan cao & áp dụng PCA nếu cần
+    - Bước 9: Chọn biến cuối cùng (4–6 clustering)
+    - Bước 10: Kiểm tra/validate
+    - Bước 11: Xuất dataset + báo cáo
+    - Bước 12: Tạo biểu đồ trực quan hóa
     """
     
     def __init__(self, input_path, output_dir, report_dir):

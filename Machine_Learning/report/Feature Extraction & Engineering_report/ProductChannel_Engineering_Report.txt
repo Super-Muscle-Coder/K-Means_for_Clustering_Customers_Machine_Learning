@@ -2,7 +2,7 @@
 PRODUCT+CHANNEL FEATURE ENGINEERING REPORT (v5 - AUTO-DETECT TRANSFORM + AUTO PCA)
 ====================================================================================================
 
-Generated : 2025-11-11 09:10:17
+Generated : 2025-11-15 12:44:15
 Input     : C:\Project\Machine_Learning\Machine_Learning\dataset\Customer_Behavior_cleaned.csv
 Output    : C:\Project\Machine_Learning\Machine_Learning\dataset\Customer_Behavior_ProductChannel.csv
 Strategy  : Volume-Based + Auto-Detect Transform + Auto-Detect PCA
@@ -70,33 +70,33 @@ Between         : Web_Engagement ↔ PC1_Total_TotalPurchases
 
 PROCESSING LOG:
 ----------------------------------------------------------------------------------------------------
-  1. [09:10:17] Load data
+  1. [12:44:15] Load data
      Shape: (2010, 24)
-  2. [09:10:17] Create Total_Spent
+  2. [12:44:15] Create Total_Spent
      Mean: 608, Skew: 0.857, Zero: 0
-  3. [09:10:17] Transform Total_Spent
+  3. [12:44:15] Transform Total_Spent
      Box-Cox: Skew 0.857 -> -0.126
-  4. [09:10:17] Create TotalPurchases
+  4. [12:44:15] Create TotalPurchases
      Mean: 14.9, Skew: 0.249
-  5. [09:10:17] Create product preferences
+  5. [12:44:15] Create product preferences
      6 ratios (reference)
-  6. [09:10:17] Create Product_HHI
+  6. [12:44:15] Create Product_HHI
      Mean: 0.391, Skew: 1.053
-  7. [09:10:17] Create Dominant_Product
+  7. [12:44:15] Create Dominant_Product
      For labeling
-  8. [09:10:17] Create Store_Preference
+  8. [12:44:15] Create Store_Preference
      Mean: 0.408, Skew: 0.059
-  9. [09:10:17] Create Web_Engagement
+  9. [12:44:15] Create Web_Engagement
      Mean: 5.3, Skew: 0.279
- 10. [09:10:17] Apply PCA
+ 10. [12:44:15] Apply PCA
      PC1_Total_TotalPurchases: Variance=93.69%, Corr(Total_Spent_Transformed, TotalPurchases)=0.874
- 11. [09:10:17] PCA Complete
+ 11. [12:44:15] PCA Complete
      Applied to 1 pair(s)
- 12. [09:10:17] Select features
+ 12. [12:44:15] Select features
      12 (4 clustering + 8 ref)
- 13. [09:10:17] Validate
+ 13. [12:44:15] Validate
      Completed
- 14. [09:10:17] Export dataset
+ 14. [12:44:15] Export dataset
      C:\Project\Machine_Learning\Machine_Learning\dataset\Customer_Behavior_ProductChannel.csv
 
 ====================================================================================================

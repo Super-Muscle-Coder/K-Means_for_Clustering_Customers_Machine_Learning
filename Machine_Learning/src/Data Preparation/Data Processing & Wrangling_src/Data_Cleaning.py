@@ -137,18 +137,12 @@ class DataCleaning:
             print(f"Lỗi khi xuất báo cáo: {e}")
             return None
 
-    # =================================================================================================================
+        # =================================================================================================================
     # HÀM XỬ LÝ GIÁ TRỊ BỊ THIẾU
-    def handle_missing_value(self, strategy='split_and_save'):
+    def handle_missing_value(self):
         """
-        Hàm xử lý giá trị bị thiếu theo phương pháp tách dataset:
-        - Tìm và thống kê các giá trị bị thiếu
-        - Tách các dòng có missing values thành mini dataset riêng
-        - Chỉ lưu trữ trong bộ nhớ, không xuất file CSV
-    
-        Args: 
-            strategy (str, optional): Chiến lược xử lý. Mặc định là 'split_and_save'
-    
+        Hàm xử lý giá trị bị thiếu bằng cách loại bỏ trực tiếp các dòng có missing values.
+        
         Returns:
             dict: Thông tin về quá trình xử lý
         """
@@ -190,27 +184,23 @@ class DataCleaning:
         # BƯỚC 2: XÁC ĐỊNH PHƯƠNG ÁN XỬ LÝ
         # =====================================
         print(f"\nPHƯƠNG ÁN XỬ LÝ:")
-        print("Sẽ tách các dòng có missing values thành dataset riêng trong bộ nhớ:")
-        print("  - Dataset chính : Chỉ chứa các dòng hoàn chỉnh không có missing")
-        print("  - Mini dataset  : Lưu trữ trong bộ nhớ để phân tích nếu cần")
+        print("Sẽ loại bỏ tất cả các dòng có missing values")
 
         # =====================================
-        # BƯỚC 3: TÁCH DATASET
+        # BƯỚC 3: LOẠI BỎ CÁC DÒNG CÓ MISSING VALUES
         # =====================================
-    
-        # Xác định các dòng có missing values
+        
+        before_rows = len(self.cleaned_data)
         rows_with_missing = self.cleaned_data.isnull().any(axis=1)
         missing_rows_count = rows_with_missing.sum()
-    
-        # Tạo mini dataset chứa các dòng có missing values 
-        self.missing_data_subset = self.cleaned_data[rows_with_missing].copy()
-    
-        # Tạo dataset chính chỉ chứa dòng hoàn chỉnh
-        self.cleaned_data = self.cleaned_data[~rows_with_missing].copy()
-    
-        print(f"\nTách thành công")
-        print(f"  - Dataset chính : {len(self.cleaned_data):,} dòng")
-        print(f"  - Mini dataset  : {len(self.missing_data_subset):,} dòng (lưu trong bộ nhớ)")
+        
+        # Loại bỏ các dòng có missing values
+        self.cleaned_data = self.cleaned_data.dropna()
+        after_rows = len(self.cleaned_data)
+
+        print(f"\nLoại bỏ thành công")
+        print(f"  - Đã loại bỏ: {missing_rows_count:,} dòng")
+        print(f"  - Dataset còn lại: {after_rows:,} dòng")
 
         # =====================================
         # BƯỚC 4: THỐNG KÊ KẾT QUẢ
@@ -219,72 +209,33 @@ class DataCleaning:
         print("=" * 60)
         print(f"Dataset gốc              : {len(self.raw_data):,} dòng")
         print(f"Dòng có missing values   : {missing_rows_count:,} dòng")
-        print(f"Dataset chính (sạch)     : {len(self.cleaned_data):,} dòng")
-        print(f"Mini dataset (missing)   : {len(self.missing_data_subset):,} dòng")
-        print(f"Tỷ lệ dữ liệu sạch       : {len(self.cleaned_data)/len(self.raw_data)*100:.2f}%")
+        print(f"Dataset sau loại bỏ      : {after_rows:,} dòng")
+        print(f"Tỷ lệ dữ liệu còn lại    : {after_rows/len(self.raw_data)*100:.2f}%")
         print("=" * 60)
-
-        # Chi tiết missing values trong mini dataset
-        if len(self.missing_data_subset) > 0:
-            print(f"\nCHI TIẾT MINI DATASET:")
-            for col in missing_columns:
-                missing_in_subset = self.missing_data_subset[col].isnull().sum()
-                if missing_in_subset > 0:
-                    print(f"- {col:<20}   : {missing_in_subset:>4} missing values")
 
         # =====================================
         # BƯỚC 5: GHI LOG VÀ TRẢ VỀ KẾT QUẢ  
         # =====================================
-        self.log_action("Tách dataset theo missing values", 
-                       f"Tách {missing_rows_count} dòng có missing thành mini dataset")
+        self.log_action("Loại bỏ các dòng có missing values", 
+                       f"Đã loại bỏ {missing_rows_count} dòng")
     
         result = {
             'status': 'success',
             'original_rows': len(self.raw_data),
             'missing_rows': missing_rows_count,
-            'cleaned_rows': len(self.cleaned_data),
-            'missing_subset_rows': len(self.missing_data_subset),
-            'cleaned_percentage': len(self.cleaned_data)/len(self.raw_data)*100,
+            'cleaned_rows': after_rows,
+            'cleaned_percentage': after_rows/len(self.raw_data)*100,
             'missing_info': missing_info
         }
-        # Thêm sau BƯỚC 5 (trước return):
+
+        # Tạo biểu đồ nếu có missing values
         if missing_rows_count > 0:
             print(f"\nTẠO BIỂU ĐỒ MISSING VALUES:")
             self._plot_missing_values_analysis(missing_info, missing_rows_count)
 
         print(f"\nHoàn thành xử lý missing values\n")        
         return result
-
-    # =================================================================================================================
-    # HÀM HIỂN THỊ THỐNG KÊ MINI DATASET
-    def show_missing_subset_info(self):
-        """
-        Hiển thị thông tin chi tiết về mini dataset chứa missing values
-        """
-        if not hasattr(self, 'missing_data_subset') or self.missing_data_subset is None:
-            print("Chưa có mini dataset missing values. Hãy chạy handle_missing_value() trước.")
-            return None
-            
-        print("="*100)
-        print("THÔNG TIN CHI TIẾT MINI DATASET CHỨA MISSING VALUES")
-        print("="*100)
-        
-        print(f"Shape: {self.missing_data_subset.shape}")
-        print(f"\nMissing values trong mini dataset:")
-        missing_counts = self.missing_data_subset.isnull().sum()
-        missing_counts = missing_counts[missing_counts > 0]
-        
-        if len(missing_counts) > 0:
-            print("-" * 40)
-            for col, count in missing_counts.items():
-                percent = (count / len(self.missing_data_subset)) * 100
-                print(f"{col:<20}: {count:>4} ({percent:>5.1f}%)")
-            print("-" * 40)
-        
-        print(f"\nMẫu dữ liệu đầu tiên:")
-        print(self.missing_data_subset.head())
-        
-        return self.missing_data_subset
+        return result
 
     # =================================================================================================================
     # HÀM LẤY DATASET ĐÃ LÀM SẠCH  

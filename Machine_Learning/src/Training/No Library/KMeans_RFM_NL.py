@@ -1,220 +1,606 @@
-﻿import os, sys, logging
-import numpy as np, pandas as pd
-import matplotlib.pyplot as plt, seaborn as sns
+﻿"""
+================================================================================
+K-MEANS CLUSTERING - RFM SEGMENTATION (NO LIBRARY IMPLEMENTATION)
+================================================================================
 
-# =========================
-# Cấu hình đầu vào
-# =========================
-dataset_path = r"C:\Project\Machine_Learning\Machine_Learning\dataset\Customer_Behavior_RFM_robust_scaled.csv"
-output_dir   = r"C:\Project\Machine_Learning\Machine_Learning\graph\Training\No Library\RFM_NL\\"
-report_dir   = r"C:\Project\Machine_Learning\Machine_Learning\report\Training\No Library\\"
+Module: Simplified K-Means for RFM Customer Segmentation
+Strategy: Recency, Income_per_Family_Member_Transformed,
+          PC1_TotalPurchases_Total, PC1_AvgPerPurchase_Income
 
-K_MIN, K_MAX = 2, 10
-RANDOM_STATE, MAX_ITER, TOL = 42, 300, 1e-4
+Features:
+- Custom K-Means implementation (no sklearn.cluster.KMeans)
+- Random initialization (default) + K-Means++ (optional toggle)
+- Optimal K selection via Elbow + Silhouette (2-method voting)
+- Flexible K adjustment (default K=2, adjustable based on voting)
+- PCA visualization (2D + 3D)
+- 2D/3D native scatter visualizations
+- Line chart visualization for cluster characteristics
+- Minimal console output, focus on visualizations
 
-# =========================
-# Khởi tạo thư mục + logging
-# =========================
-os.makedirs(output_dir, exist_ok=True)
-os.makedirs(report_dir, exist_ok=True)
+Input:  Customer_Behavior_RFM_Robust_scaled.csv
+Output: Optimized clustering + clean visualizations
+================================================================================
+"""
 
-log_file = os.path.join(report_dir, "RFM_NL.log")
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s  %(levelname)-8s  %(message)s",
-    handlers=[
-        logging.FileHandler(log_file, mode="w", encoding="utf-8"),
-        logging.StreamHandler(sys.stdout)
-    ]
-)
-logger = logging.getLogger(__name__)
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+import os
+import warnings
 
-rng = np.random.default_rng(RANDOM_STATE)
+from sklearn.metrics import silhouette_score
+from sklearn.decomposition import PCA
 
-# =========================
-# Tiện ích
-# =========================
-def load_dataset(path):
-    df = pd.read_csv(path)
-    feature_cols = df.select_dtypes(include=[np.number]).columns.tolist()
-    if not feature_cols:
-        raise ValueError("No numeric features found.")
-    return df, df[feature_cols].values, feature_cols
+warnings.filterwarnings('ignore')
+sns.set_style("whitegrid")
 
-def euclidean_distances(A, B):
-    return np.linalg.norm(A[:, None, :] - B[None, :, :], axis=2)
 
-def kmeans_plus_plus_init(X, k):
-    n_samples = X.shape[0]
-    first_idx = rng.integers(0, n_samples)
-    centroids = [X[first_idx]]
-    for _ in range(1, k):
-        dists = euclidean_distances(X, np.array(centroids))
-        closest_dist_sq = np.min(dists**2, axis=1)
-        probs = closest_dist_sq / np.sum(closest_dist_sq)
-        next_idx = rng.choice(n_samples, p=probs)
-        centroids.append(X[next_idx])
-    return np.array(centroids)
+# ================================================================================
+# CUSTOM K-MEANS IMPLEMENTATION
+# ================================================================================
 
-def assign_clusters(X, centroids):
-    return np.argmin(euclidean_distances(X, centroids), axis=1)
+class CustomKMeans:
+    """Self-implemented K-Means clustering algorithm."""
+    def __init__(self, n_clusters=2, init_method='random', max_iter=300,
+                 n_init=10, tol=1e-4, random_state=42):
+        self.n_clusters = n_clusters
+        self.init_method = init_method
+        self.max_iter = max_iter
+        self.n_init = n_init
+        self.tol = tol
+        self.random_state = random_state
 
-def update_centroids(X, labels, k):
-    d = X.shape[1]
-    new_centroids = np.zeros((k, d))
-    for i in range(k):
-        cluster_points = X[labels == i]
-        if cluster_points.shape[0] == 0:
-            idx = rng.integers(0, X.shape[0])
-            new_centroids[i] = X[idx]
-        else:
-            new_centroids[i] = cluster_points.mean(axis=0)
-    return new_centroids
+        self.cluster_centers_ = None
+        self.labels_ = None
+        self.inertia_ = None
+        self.n_iter_ = 0
 
-def inertia(X, centroids, labels):
-    diffs = X - centroids[labels]
-    return np.sum(np.sum(diffs**2, axis=1))
+    def _init_centroids_random(self, X):
+        np.random.seed(self.random_state)
+        idx = np.random.choice(X.shape[0], self.n_clusters, replace=False)
+        return X[idx].copy()
 
-def silhouette_score_custom(X, labels):
-    n = X.shape[0]
-    unique_labels = np.unique(labels)
-    if unique_labels.size < 2: return np.nan
-    D = euclidean_distances(X, X)
-    s_vals = np.zeros(n)
-    for i in range(n):
-        li = labels[i]
-        same = np.where(labels == li)[0]
-        same = same[same != i]
-        a = np.mean(D[i, same]) if same.size > 0 else 0.0
-        b = np.inf
-        for lj in unique_labels:
-            if lj == li: continue
-            other = np.where(labels == lj)[0]
-            if other.size > 0:
-                b = min(b, np.mean(D[i, other]))
-        denom = max(a, b)
-        s_vals[i] = (b - a) / denom if denom > 0 else 0.0
-    return float(np.mean(s_vals))
+    def _init_centroids_kmeans_plus_plus(self, X):
+        np.random.seed(self.random_state)
+        n_samples = X.shape[0]
+        centroids = [X[np.random.randint(n_samples)]]
+        for _ in range(1, self.n_clusters):
+            distances = np.array([
+                min([np.linalg.norm(x - c)**2 for c in centroids])
+                for x in X
+            ])
+            probabilities = distances / distances.sum()
+            cumulative = probabilities.cumsum()
+            r = np.random.rand()
+            for i, cp in enumerate(cumulative):
+                if r < cp:
+                    centroids.append(X[i])
+                    break
+        return np.array(centroids)
 
-def davies_bouldin_index(X, labels, centroids):
-    k = centroids.shape[0]
-    S = np.zeros(k)
-    for i in range(k):
-        Xi = X[labels == i]
-        S[i] = np.mean(np.linalg.norm(Xi - centroids[i], axis=1)) if Xi.shape[0] > 0 else 0.0
-    M = euclidean_distances(centroids, centroids)
-    R = np.zeros((k, k))
-    for i in range(k):
-        for j in range(k):
-            if i != j:
-                R[i, j] = (S[i] + S[j]) / (M[i, j] + 1e-12)
-    return float(np.mean(np.max(R, axis=1)))
+    def _assign_clusters(self, X, centroids):
+        distances = np.zeros((X.shape[0], self.n_clusters))
+        for k in range(self.n_clusters):
+            distances[:, k] = np.linalg.norm(X - centroids[k], axis=1)
+        return np.argmin(distances, axis=1)
 
-def calinski_harabasz_index(X, labels, centroids):
-    n, d = X.shape
-    k = centroids.shape[0]
-    overall_mean = X.mean(axis=0)
-    W, B = 0.0, 0.0
-    for i in range(k):
-        Xi = X[labels == i]
-        if Xi.shape[0] > 0:
-            W += np.sum(np.sum((Xi - centroids[i])**2, axis=1))
-            diff = centroids[i] - overall_mean
-            B += Xi.shape[0] * np.sum(diff**2)
-    return float((B / (k - 1)) / (W / (n - k))) if k > 1 and n > k else np.nan
+    def _update_centroids(self, X, labels):
+        centroids = np.zeros((self.n_clusters, X.shape[1]))
+        for k in range(self.n_clusters):
+            pts = X[labels == k]
+            if len(pts) > 0:
+                centroids[k] = pts.mean(axis=0)
+            else:
+                centroids[k] = X[np.random.randint(X.shape[0])]
+        return centroids
 
-# =========================
-# K-Means chính
-# =========================
-def kmeans_nolib(X, k, max_iter=MAX_ITER, tol=TOL):
-    centroids = kmeans_plus_plus_init(X, k)
-    for _ in range(max_iter):
-        labels = assign_clusters(X, centroids)
-        new_centroids = update_centroids(X, labels, k)
-        if np.linalg.norm(new_centroids - centroids) < tol: break
-        centroids = new_centroids
-    inert = inertia(X, centroids, labels)
-    sil = silhouette_score_custom(X, labels)
-    dbi = davies_bouldin_index(X, labels, centroids)
-    chi = calinski_harabasz_index(X, labels, centroids)
-    return labels, centroids, inert, sil, dbi, chi
+    def _calculate_inertia(self, X, labels, centroids):
+        inertia = 0.0
+        for k in range(self.n_clusters):
+            pts = X[labels == k]
+            if len(pts) > 0:
+                inertia += np.sum((pts - centroids[k])**2)
+        return inertia
 
-# =========================
-# Vẽ biểu đồ cho từng k
-# =========================
-def save_heatmap_centroids(centroids, feature_cols, out_dir, k):
-    centroids_df = pd.DataFrame(centroids, columns=feature_cols)
-    heat_df = centroids_df.transpose()
-    fig = plt.figure(figsize=(max(6, len(feature_cols)*0.5), max(4, centroids.shape[0]*0.3)))
-    sns.heatmap(heat_df, cmap='vlag', annot=True, fmt=".2f")
-    plt.title(f'Cluster Centroids Heatmap (k={k})')
-    fname = os.path.join(out_dir, f"centroid_heatmap_k{k}.png")
-    fig.savefig(fname, bbox_inches='tight', dpi=150)
-    plt.close(fig)
-    logger.info("Saved heatmap: %s", fname)
+    def fit(self, X):
+        X = np.array(X)
+        best_inertia = np.inf
+        best_centroids = None
+        best_labels = None
+        best_n_iter = 0
 
-def save_centroid_plot(centroids, feature_cols, out_dir, k):
-    fig = plt.figure(figsize=(10,6))
-    for i in range(centroids.shape[0]):
-        plt.plot(feature_cols, centroids[i], marker='o', label=f'Cluster {i}')
-    plt.xticks(rotation=45, ha='right')
-    plt.title(f'Cluster Centroid Plot (k={k})')
-    plt.legend()
-    fname = os.path.join(out_dir, f"centroid_plot_k{k}.png")
-    fig.savefig(fname, bbox_inches='tight', dpi=150)
-    plt.close(fig)
-    logger.info("Saved centroid plot: %s", fname)
+        for _ in range(self.n_init):
+            centroids = (
+                self._init_centroids_kmeans_plus_plus(X)
+                if self.init_method == 'kmeans++'
+                else self._init_centroids_random(X)
+            )
+            for iteration in range(self.max_iter):
+                labels = self._assign_clusters(X, centroids)
+                new_centroids = self._update_centroids(X, labels)
+                if np.linalg.norm(new_centroids - centroids) < self.tol:
+                    break
+                centroids = new_centroids
 
-def save_pairplot(df, labels, feature_cols, out_dir, k):
-    variances = df[feature_cols].var().sort_values(ascending=False)
-    pairplot_cols = variances.index[:4].tolist()
-    pair_df = df[pairplot_cols].copy()
-    pair_df['cluster'] = labels
-    sns.set(style="ticks")
-    g = sns.pairplot(pair_df, hue='cluster', diag_kind='kde', plot_kws={'s':20})
-    fname = os.path.join(out_dir, f"pairplot_k{k}.png")
-    g.fig.savefig(fname, bbox_inches='tight', dpi=150)
-    plt.close('all')
-    logger.info("Saved pairplot: %s", fname)
+            inertia = self._calculate_inertia(X, labels, centroids)
+            if inertia < best_inertia:
+                best_inertia = inertia
+                best_centroids = centroids
+                best_labels = labels
+                best_n_iter = iteration + 1
 
-# =========================
-# Chạy toàn bộ vòng lặp k
-# =========================
+        self.cluster_centers_ = best_centroids
+        self.labels_ = best_labels
+        self.inertia_ = best_inertia
+        self.n_iter_ = best_n_iter
+        return self
+
+    def predict(self, X):
+        X = np.array(X)
+        return self._assign_clusters(X, self.cluster_centers_)
+
+
+# ================================================================================
+# OPTIMAL K SELECTOR (ELBOW + SILHOUETTE)
+# ================================================================================
+
+class OptimalKSelector:
+    """Select optimal K using Elbow + Silhouette voting."""
+    def __init__(self, X, k_range=(2, 11), init_method='random', random_state=42):
+        self.X = np.array(X)
+        self.k_range = k_range
+        self.init_method = init_method
+        self.random_state = random_state
+        self.wcss_scores = {}
+        self.silhouette_scores = {}
+        self.votes = {}
+
+    def evaluate_all_k(self):
+        k_values = range(self.k_range[0], self.k_range[1])
+        for k in k_values:
+            kmeans = CustomKMeans(
+                n_clusters=k,
+                init_method=self.init_method,
+                random_state=self.random_state
+            )
+            kmeans.fit(self.X)
+            labels = kmeans.labels_
+            self.wcss_scores[k] = kmeans.inertia_
+            self.silhouette_scores[k] = silhouette_score(self.X, labels)
+
+    def vote_optimal_k(self):
+        elbow_k = self._find_elbow_point()
+        silhouette_k = max(self.silhouette_scores, key=self.silhouette_scores.get)
+        for k in [elbow_k, silhouette_k]:
+            self.votes[k] = self.votes.get(k, 0) + 1
+        optimal_k = max(self.votes, key=self.votes.get)
+        return optimal_k, elbow_k, silhouette_k
+
+    def _find_elbow_point(self):
+        k_values = sorted(self.wcss_scores.keys())
+        wcss_values = np.array([self.wcss_scores[k] for k in k_values], dtype=float)
+        wcss_norm = (wcss_values - wcss_values.min()) / (wcss_values.max() - wcss_values.min() + 1e-12)
+        k_norm = (np.array(k_values) - min(k_values)) / (max(k_values) - min(k_values) + 1e-12)
+        line_vec = np.array([k_norm[-1] - k_norm[0], wcss_norm[-1] - wcss_norm[0]])
+        line_vec_norm = line_vec / (np.linalg.norm(line_vec) + 1e-12)
+        distances = []
+        for i in range(len(k_values)):
+            point_vec = np.array([k_norm[i] - k_norm[0], wcss_norm[i] - wcss_norm[0]])
+            distance = np.abs(np.cross(line_vec_norm, point_vec))
+            distances.append(distance)
+        elbow_idx = int(np.argmax(distances))
+        return k_values[elbow_idx]
+
+
+# ================================================================================
+# RFM K-MEANS ANALYZER
+# ================================================================================
+
+class RFMKMeansAnalyzer:
+    """Complete K-Means analysis pipeline for RFM segmentation."""
+    def __init__(self, input_csv, output_graph_dir, k=2, init_kmeans_plus_plus=False,
+                 use_voting=True, random_state=42):
+        self.input_csv = input_csv
+        self.output_graph_dir = output_graph_dir
+        self.k = k
+        self.init_method = 'kmeans++' if init_kmeans_plus_plus else 'random'
+        self.use_voting = use_voting
+        self.random_state = random_state
+
+        os.makedirs(output_graph_dir, exist_ok=True)
+
+        self.df = None
+        self.X_clustering = None
+        self.kmeans = None
+        self.optimal_k_selector = None
+        self.optimal_k = None
+        self.elbow_k = None
+        self.silhouette_k = None
+        self.pca_2d = None
+        self.pca_3d = None
+        self.X_pca_2d = None
+        self.X_pca_3d = None
+
+        # All features participate in clustering
+        self.CLUSTERING_FEATURES = [
+            'Recency',
+            'Income_per_Family_Member_Transformed',
+            'PC1_TotalPurchases_Total',
+            'PC1_AvgPerPurchase_Income'
+        ]
+
+    def load_data(self):
+        """Load and validate dataset."""
+        self.df = pd.read_csv(self.input_csv)
+        missing = [f for f in self.CLUSTERING_FEATURES if f not in self.df.columns]
+        if len(missing) > 0:
+            raise ValueError(f"Missing required columns: {missing}")
+        self.X_clustering = self.df[self.CLUSTERING_FEATURES].values
+
+    def find_optimal_k(self):
+        """Find optimal K using Elbow + Silhouette voting."""
+        if not self.use_voting:
+            return
+        self.optimal_k_selector = OptimalKSelector(
+            self.X_clustering,
+            k_range=(2, 11),
+            init_method=self.init_method,
+            random_state=self.random_state
+        )
+        self.optimal_k_selector.evaluate_all_k()
+        self.optimal_k, self.elbow_k, self.silhouette_k = self.optimal_k_selector.vote_optimal_k()
+
+    def fit_kmeans(self):
+        """Fit K-Means with selected K."""
+        self.kmeans = CustomKMeans(
+            n_clusters=self.k,
+            init_method=self.init_method,
+            max_iter=300,
+            n_init=10,
+            random_state=self.random_state
+        )
+        self.kmeans.fit(self.X_clustering)
+        self.df['Cluster'] = self.kmeans.labels_
+
+    def compute_pca(self):
+        """Compute PCA for 2D and 3D visualization."""
+        self.pca_2d = PCA(n_components=2, random_state=self.random_state)
+        self.X_pca_2d = self.pca_2d.fit_transform(self.X_clustering)
+        self.pca_3d = PCA(n_components=3, random_state=self.random_state)
+        self.X_pca_3d = self.pca_3d.fit_transform(self.X_clustering)
+
+    # --------------------------------------------------------------------------
+    # Visualizations
+    # --------------------------------------------------------------------------
+
+    def visualize_optimal_k(self):
+        """Visualize Elbow + Silhouette with voting suggestions."""
+        if self.optimal_k_selector is None:
+            return
+
+        fig, axes = plt.subplots(1, 2, figsize=(16, 6))
+        fig.suptitle('Optimal K Selection - Elbow & Silhouette Methods', fontsize=16, fontweight='bold')
+
+        k_values = sorted(self.optimal_k_selector.wcss_scores.keys())
+
+        # Elbow
+        ax = axes[0]
+        wcss_vals = [self.optimal_k_selector.wcss_scores[k] for k in k_values]
+        ax.plot(k_values, wcss_vals, 'bo-', linewidth=2.5, markersize=8, label='WCSS')
+        ax.axvline(self.elbow_k, color='red', linestyle='--', linewidth=2.5, label=f'Elbow K={self.elbow_k}')
+        ax.set_xlabel('Number of Clusters (K)', fontsize=12, fontweight='bold')
+        ax.set_ylabel('WCSS (Within-Cluster Sum of Squares)', fontsize=12, fontweight='bold')
+        ax.set_title('Elbow Method', fontsize=13, fontweight='bold')
+        ax.grid(True, alpha=0.3)
+        ax.legend(fontsize=11)
+
+        # Silhouette
+        ax = axes[1]
+        sil_vals = [self.optimal_k_selector.silhouette_scores[k] for k in k_values]
+        ax.plot(k_values, sil_vals, 'go-', linewidth=2.5, markersize=8, label='Silhouette')
+        ax.axvline(self.silhouette_k, color='red', linestyle='--', linewidth=2.5, label=f'Silhouette K={self.silhouette_k}')
+        ax.set_xlabel('Number of Clusters (K)', fontsize=12, fontweight='bold')
+        ax.set_ylabel('Silhouette Score', fontsize=12, fontweight='bold')
+        ax.set_title('Silhouette Score (Higher is Better)', fontsize=13, fontweight='bold')
+        ax.grid(True, alpha=0.3)
+        ax.legend(fontsize=11)
+
+        plt.tight_layout()
+        filepath = os.path.join(self.output_graph_dir, "01_Optimal_K_Evaluation.png")
+        plt.savefig(filepath, dpi=150, bbox_inches='tight')
+        plt.close()
+
+    def visualize_pca_2d(self):
+        """Visualize clusters using 2D PCA projection."""
+        fig, ax = plt.subplots(figsize=(13, 8))
+        colors = plt.cm.tab10(np.linspace(0, 1, self.k))
+
+        for cluster_id in range(self.k):
+            mask = self.df['Cluster'] == cluster_id
+            ax.scatter(
+                self.X_pca_2d[mask, 0],
+                self.X_pca_2d[mask, 1],
+                label=f'Cluster {cluster_id} (n={(mask).sum():,})',
+                alpha=0.65,
+                s=60,
+                color=colors[cluster_id],
+                edgecolors='black',
+                linewidth=0.5
+            )
+
+        pca_centroids_2d = self.pca_2d.transform(self.kmeans.cluster_centers_)
+        ax.scatter(
+            pca_centroids_2d[:, 0],
+            pca_centroids_2d[:, 1],
+            marker='X',
+            s=400,
+            c='red',
+            edgecolors='black',
+            linewidth=2.5,
+            label='Centroids',
+            zorder=10
+        )
+
+        var_1 = self.pca_2d.explained_variance_ratio_[0] * 100
+        var_2 = self.pca_2d.explained_variance_ratio_[1] * 100
+        ax.set_xlabel(f'PC1 ({var_1:.1f}% variance)', fontsize=12, fontweight='bold')
+        ax.set_ylabel(f'PC2 ({var_2:.1f}% variance)', fontsize=12, fontweight='bold')
+        ax.set_title(f'K-Means Clustering (K={self.k}) - PCA 2D Projection', fontsize=14, fontweight='bold')
+        ax.legend(loc='best', fontsize=11)
+        ax.grid(True, alpha=0.3)
+
+        plt.tight_layout()
+        filepath = os.path.join(self.output_graph_dir, "02_PCA_2D.png")
+        plt.savefig(filepath, dpi=150, bbox_inches='tight')
+        plt.close()
+
+    def visualize_pca_3d(self):
+        """Visualize clusters using 3D PCA projection."""
+        from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
+
+        fig = plt.figure(figsize=(14, 10))
+        ax = fig.add_subplot(111, projection='3d')
+        colors = plt.cm.tab10(np.linspace(0, 1, self.k))
+
+        for cluster_id in range(self.k):
+            mask = self.df['Cluster'] == cluster_id
+            ax.scatter(
+                self.X_pca_3d[mask, 0],
+                self.X_pca_3d[mask, 1],
+                self.X_pca_3d[mask, 2],
+                label=f'Cluster {cluster_id} (n={(mask).sum():,})',
+                c=[colors[cluster_id]],
+                alpha=0.65,
+                s=40,
+                edgecolors='black',
+                linewidth=0.3
+            )
+
+        pca_centroids_3d = self.pca_3d.transform(self.kmeans.cluster_centers_)
+        ax.scatter(
+            pca_centroids_3d[:, 0],
+            pca_centroids_3d[:, 1],
+            pca_centroids_3d[:, 2],
+            marker='X',
+            s=400,
+            c='red',
+            edgecolors='black',
+            linewidth=2.5,
+            label='Centroids',
+            zorder=10
+        )
+
+        var_1 = self.pca_3d.explained_variance_ratio_[0] * 100
+        var_2 = self.pca_3d.explained_variance_ratio_[1] * 100
+        var_3 = self.pca_3d.explained_variance_ratio_[2] * 100
+        ax.set_xlabel(f'PC1 ({var_1:.1f}%)', fontsize=11, fontweight='bold')
+        ax.set_ylabel(f'PC2 ({var_2:.1f}%)', fontsize=11, fontweight='bold')
+        ax.set_zlabel(f'PC3 ({var_3:.1f}%)', fontsize=11, fontweight='bold')
+        ax.set_title(f'K-Means Clustering (K={self.k}) - PCA 3D Projection', fontsize=14, fontweight='bold')
+        ax.legend(loc='best', fontsize=10)
+
+        plt.tight_layout()
+        filepath = os.path.join(self.output_graph_dir, "03_PCA_3D.png")
+        plt.savefig(filepath, dpi=150, bbox_inches='tight')
+        plt.close()
+
+    def visualize_clusters_2d(self):
+        """Native 2D scatter: Recency vs PC1_TotalPurchases_Total."""
+        fig, ax = plt.subplots(figsize=(13, 8))
+        colors = plt.cm.tab10(np.linspace(0, 1, self.k))
+
+        for cluster_id in range(self.k):
+            data = self.df[self.df['Cluster'] == cluster_id]
+            ax.scatter(
+                data['Recency'],
+                data['PC1_TotalPurchases_Total'],
+                label=f'Cluster {cluster_id} (n={len(data):,})',
+                alpha=0.65,
+                s=60,
+                color=colors[cluster_id],
+                edgecolors='black',
+                linewidth=0.5
+            )
+
+        centroids = self.kmeans.cluster_centers_
+        # indices: Recency(0), PC1_TotalPurchases_Total(2)
+        ax.scatter(
+            centroids[:, 0],
+            centroids[:, 2],
+            marker='X',
+            s=400,
+            c='red',
+            edgecolors='black',
+            linewidth=2.5,
+            label='Centroids',
+            zorder=10
+        )
+
+        ax.set_xlabel('Recency (Scaled)', fontsize=12, fontweight='bold')
+        ax.set_ylabel('PC1_TotalPurchases_Total (Scaled)', fontsize=12, fontweight='bold')
+        ax.set_title(f'K-Means Clustering (K={self.k}) - Recency vs Total Purchases', fontsize=14, fontweight='bold')
+        ax.legend(loc='best', fontsize=11)
+        ax.grid(True, alpha=0.3)
+
+        plt.tight_layout()
+        filepath = os.path.join(self.output_graph_dir, "04_Clusters_2D_Recency_vs_TotalPurchases.png")
+        plt.savefig(filepath, dpi=150, bbox_inches='tight')
+        plt.close()
+
+    def visualize_clusters_3d(self):
+        """Native 3D scatter: Recency, Income_per_Family_Member_Transformed, PC1_AvgPerPurchase_Income."""
+        from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
+
+        fig = plt.figure(figsize=(14, 10))
+        ax = fig.add_subplot(111, projection='3d')
+        colors = plt.cm.tab10(np.linspace(0, 1, self.k))
+
+        for cluster_id in range(self.k):
+            data = self.df[self.df['Cluster'] == cluster_id]
+            ax.scatter(
+                data['Recency'],
+                data['Income_per_Family_Member_Transformed'],
+                data['PC1_AvgPerPurchase_Income'],
+                label=f'Cluster {cluster_id} (n={len(data):,})',
+                c=[colors[cluster_id]],
+                alpha=0.65,
+                s=40,
+                edgecolors='black',
+                linewidth=0.3
+            )
+
+        centroids = self.kmeans.cluster_centers_
+        ax.scatter(
+            centroids[:, 0],
+            centroids[:, 1],
+            centroids[:, 3],
+            marker='X',
+            s=400,
+            c='red',
+            edgecolors='black',
+            linewidth=2.5,
+            label='Centroids',
+            zorder=10
+        )
+
+        ax.set_xlabel('Recency (Scaled)', fontsize=11, fontweight='bold')
+        ax.set_ylabel('Income_per_Family_Member_Transformed (Scaled)', fontsize=11, fontweight='bold')
+        ax.set_zlabel('PC1_AvgPerPurchase_Income (Scaled)', fontsize=11, fontweight='bold')
+        ax.set_title(f'K-Means Clustering (K={self.k}) - 3D View', fontsize=14, fontweight='bold')
+        ax.legend(loc='best', fontsize=10)
+
+        plt.tight_layout()
+        filepath = os.path.join(self.output_graph_dir, "05_Clusters_3D_Recency_Income_AvgPerPurchase.png")
+        plt.savefig(filepath, dpi=150, bbox_inches='tight')
+        plt.close()
+
+    def visualize_cluster_characteristics_line(self):
+        """Line chart of cluster characteristics across all RFM features."""
+        fig, ax = plt.subplots(figsize=(15, 8))
+        feature_names = self.CLUSTERING_FEATURES
+
+        for cluster_id in range(self.k):
+            data = self.df[self.df['Cluster'] == cluster_id]
+            means = [data[c].mean() for c in feature_names]
+            ax.plot(feature_names, means, 'o-', linewidth=2.5, markersize=8,
+                    label=f'Cluster {cluster_id}', alpha=0.85)
+
+        ax.set_ylabel('Mean Value (Scaled)', fontsize=12, fontweight='bold')
+        ax.set_title('Cluster Characteristics Profile (Line Chart)', fontsize=14, fontweight='bold')
+        ax.set_xticklabels(feature_names, rotation=25, ha='right', fontsize=11)
+        ax.legend(fontsize=11)
+        ax.grid(True, alpha=0.3)
+
+        plt.tight_layout()
+        filepath = os.path.join(self.output_graph_dir, "06_Cluster_Characteristics_Line.png")
+        plt.savefig(filepath, dpi=150, bbox_inches='tight')
+        plt.close()
+
+    # --------------------------------------------------------------------------
+    # Summary
+    # --------------------------------------------------------------------------
+
+    def print_summary(self):
+        """Print concise summary of clustering results."""
+        silhouette_avg = silhouette_score(self.X_clustering, self.kmeans.labels_)
+        
+        print(f"\n{'='*90}")
+        print(f"K-MEANS CLUSTERING SUMMARY (K={self.k})".center(90))
+        print(f"{'='*90}")
+        print(f"Library: Custom Implementation (No Library)")
+        print(f"Initialization: {self.init_method}")
+        print(f"Inertia (WCSS): {self.kmeans.inertia_:.2f}")
+        print(f"Iterations: {self.kmeans.n_iter_}")
+        
+        print(f"\nEvaluation Metrics:")
+        print(f"  Silhouette Score: {silhouette_avg:.4f}")
+        
+        if self.optimal_k is not None:
+            print(f"\nVoting Suggestion: K={self.optimal_k}")
+            print(f"  - Elbow Method: K={self.elbow_k}")
+            print(f"  - Silhouette: K={self.silhouette_k}")
+        
+        print(f"\nCluster Distribution:")
+        cluster_counts = self.df['Cluster'].value_counts().sort_index()
+        for cluster_id, count in cluster_counts.items():
+            pct = count / len(self.df) * 100
+            print(f"  Cluster {cluster_id}: {count:,} ({pct:.1f}%)")
+        
+        print(f"\nCentroid Locations (Scaled Features):")
+        print(f"  Shape: {self.kmeans.cluster_centers_.shape} (n_clusters={self.k}, n_features=4)")
+        for cluster_id in range(self.k):
+            centroid = self.kmeans.cluster_centers_[cluster_id]
+            print(f"  Cluster {cluster_id}: Recency={centroid[0]:.6f}, Income_per_FMember={centroid[1]:.6f}, PC1_Total={centroid[2]:.6f}, PC1_AvgPerPurch={centroid[3]:.6f}")
+        
+        print(f"\nPCA Explained Variance:")
+        print(f"  2D: PC1={self.pca_2d.explained_variance_ratio_[0]*100:.1f}%, PC2={self.pca_2d.explained_variance_ratio_[1]*100:.1f}%")
+        print(f"  3D: PC1={self.pca_3d.explained_variance_ratio_[0]*100:.1f}%, PC2={self.pca_3d.explained_variance_ratio_[1]*100:.1f}%, PC3={self.pca_3d.explained_variance_ratio_[2]*100:.1f}%")
+        
+        print(f"\nVisualizations saved to: {self.output_graph_dir}")
+        print(f"{'='*90}\n")
+
+    def run_complete_analysis(self):
+        """Run complete K-Means analysis pipeline."""
+        self.load_data()
+        self.compute_pca()
+
+        if self.use_voting:
+            self.find_optimal_k()
+
+        self.fit_kmeans()
+        self.print_summary()
+
+        # Visualizations
+        if self.optimal_k_selector is not None:
+            self.visualize_optimal_k()
+        self.visualize_pca_2d()
+        self.visualize_pca_3d()
+        self.visualize_clusters_2d()
+        self.visualize_clusters_3d()
+        self.visualize_cluster_characteristics_line()
+
+
+# ================================================================================
+# MAIN EXECUTION
+# ================================================================================
+
 def main():
-    df, X, feature_cols = load_dataset(dataset_path)
-    results = []
+    """Main execution function."""
+    INPUT_CSV = r"C:\Project\Machine_Learning\Machine_Learning\dataset\Customer_Behavior_RFM_Robust_scaled.csv"
+    OUTPUT_GRAPH_DIR = r"C:\Project\Machine_Learning\Machine_Learning\graph\Training\No Library\RFM_NL"
 
-    for k in range(K_MIN, K_MAX + 1):
-        logger.info("Running custom K-Means for k=%d", k)
-        labels, centroids, inert, sil, dbi, chi = kmeans_nolib(X, k)
-        results.append((k, inert, sil, dbi, chi))
+    # Configuration: K=4 (adjustable), K-Means++ init recommended, Use voting
+    analyzer = RFMKMeansAnalyzer(
+        input_csv=INPUT_CSV,
+        output_graph_dir=OUTPUT_GRAPH_DIR,
+        k=2,  # ← Adjust based on voting suggestions after first run
+        init_kmeans_plus_plus=True,
+        use_voting=True,
+        random_state=42
+    )
+    analyzer.run_complete_analysis()
 
-        # Lưu biểu đồ cho từng k
-        save_heatmap_centroids(centroids, feature_cols, output_dir, k)
-        save_centroid_plot(centroids, feature_cols, output_dir, k)
-        try:
-            save_pairplot(df, labels, feature_cols, output_dir, k)
-        except Exception as e:
-            logger.warning("Pairplot failed for k=%d: %s", k, str(e))
-
-        # Log kết quả từng k
-        logger.info("- k=%d: inertia=%.4f, silhouette=%.4f, calinski_harabasz=%.4f, davies_bouldin=%.4f",
-                    k, inert, sil, chi, dbi)
-
-    # Tóm tắt kết quả
-    res_df = pd.DataFrame(results, columns=['k', 'inertia', 'silhouette', 'davies_bouldin', 'calinski_harabasz'])
-    best_by_sil = res_df.loc[res_df['silhouette'].idxmax()]
-    worst_by_sil = res_df.loc[res_df['silhouette'].idxmin()]
-    inertias = res_df['inertia'].values
-    ks = res_df['k'].values
-    deltas = np.diff(inertias)
-    elbow_k = ks[np.argmin(deltas) + 1] if len(deltas) > 0 else ks[0]
-
-    logger.info("\n================ SUMMARY ================")
-    logger.info("All k results:\n%s", res_df.to_string(index=False))
-    logger.info("\nBest k by silhouette:\n%s", best_by_sil.to_string(index=False))
-    logger.info("\nWorst k by silhouette:\n%s", worst_by_sil.to_string(index=False))
-    logger.info("\nHeuristic elbow k: %d", elbow_k)
 
 if __name__ == "__main__":
     main()

@@ -30,7 +30,7 @@ sns.set(style="whitegrid")
 warnings.filterwarnings('ignore')
 
 # ================================================================================
-# CLASS 1: DEMOGRAPHIC SCALER (UPDATED - SEPARATE STANDARD & ROBUST OUTPUTS)
+# CLASS 1: DEMOGRAPHIC SCALER 
 # ================================================================================
 
 class DemographicScaler:
@@ -1222,7 +1222,7 @@ class DemographicScaler:
 
 
 # ================================================================================
-# CLASS 2: PRODUCT+CHANNEL SCALER (UPDATED - SEPARATE STANDARD & ROBUST OUTPUTS)
+# CLASS 2: PRODUCT+CHANNEL SCALER 
 # ================================================================================
 
 class ProductChannelScaler:
@@ -2462,13 +2462,8 @@ class ProductChannelScaler:
         return True
 
 
-
 # ================================================================================
-# CLASS 3: RFM SCALER (FIXED - SEQUENTIAL SCALING)
-# ================================================================================
-
-# ================================================================================
-# CLASS 3: RFM SCALER (IMPROVED - SEPARATE STANDARD & ROBUST OUTPUTS)
+# CLASS 3: RFM SCALER 
 # ================================================================================
 
 class RFMScaler:
