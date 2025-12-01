@@ -154,22 +154,7 @@ class DemographicKMeansAnalyzer:
     
     def __init__(self, input_csv, output_graph_dir, k=2, init='k-means++', 
                  use_voting=True, random_state=42):
-        """
-        Parameters:
-        -----------
-        input_csv : str
-            Path to Robust-scaled CSV
-        output_graph_dir : str
-            Directory to save visualizations
-        k : int, default=2
-            Initial number of clusters (adjustable)
-        init : str, default='k-means++'
-            Initialization method ('k-means++' or 'random')
-        use_voting : bool, default=True
-            Use Elbow+Silhouette voting to suggest optimal K
-        random_state : int, default=42
-            Random seed
-        """
+
         self.input_csv = input_csv
         self.output_graph_dir = output_graph_dir
         self.k = k

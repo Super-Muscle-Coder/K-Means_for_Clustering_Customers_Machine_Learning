@@ -156,7 +156,7 @@ class DataCleaning:
         # =====================================
         # BƯỚC 1: THỐNG KÊ MISSING VALUES
         # =====================================
-        initial_missing_count = self.cleaned_data.isnull().sum().sum()
+        initial_missing_count = self.cleaned_data.isnull().sum().sum() # Tổng số giá trị bị thiếu ban đầu
         print(f"\nTổng số giá trị bị thiếu ban đầu: {initial_missing_count}")
 
         if initial_missing_count == 0:
@@ -513,13 +513,13 @@ KẾT QUẢ:
             # Thực hiện thay đổi
             self.cleaned_data['Marital_Status'] = self.cleaned_data['Marital_Status'].replace(marital_mapping)
             
-            # Cập nhật số lượng thay đổi
+            # Cập nhật số lượng thay đổi 
             changes_made = sum(item['count'] for item in changes.values())
             categorical_changes['Marital_Status'] = changes
             
             # Đếm số lượng sau khi thay đổi
             after_counts = self.cleaned_data['Marital_Status'].value_counts()
-            print("\nGiá trị sau khi chuẩn hóa:")
+            print("\nGiá trị sau khi chuẩn hóa:")                                                                                                                                             
             for val, count in after_counts.items():
                 print(f"- '{val}': {count} ({count/len(self.cleaned_data)*100:.2f}%)")
             

@@ -4,7 +4,7 @@
     <SchemaVersion>2.0</SchemaVersion>
     <ProjectGuid>70d1f63c-5922-4470-8359-9596058f959a</ProjectGuid>
     <ProjectHome>.</ProjectHome>
-    <StartupFile>src\Training\With Library\KMeans_RFM_WL.py</StartupFile>
+    <StartupFile>src\Data Preparation\Data Processing &amp; Wrangling_src\Basic_Data_Analysis.py</StartupFile>
     <SearchPath>
     </SearchPath>
     <WorkingDirectory>.</WorkingDirectory>

@@ -1,28 +1,4 @@
-﻿"""
-================================================================================
-K-MEANS CLUSTERING - RFM SEGMENTATION (NO LIBRARY IMPLEMENTATION)
-================================================================================
-
-Module: Simplified K-Means for RFM Customer Segmentation
-Strategy: Recency, Income_per_Family_Member_Transformed,
-          PC1_TotalPurchases_Total, PC1_AvgPerPurchase_Income
-
-Features:
-- Custom K-Means implementation (no sklearn.cluster.KMeans)
-- Random initialization (default) + K-Means++ (optional toggle)
-- Optimal K selection via Elbow + Silhouette (2-method voting)
-- Flexible K adjustment (default K=2, adjustable based on voting)
-- PCA visualization (2D + 3D)
-- 2D/3D native scatter visualizations
-- Line chart visualization for cluster characteristics
-- Minimal console output, focus on visualizations
-
-Input:  Customer_Behavior_RFM_Robust_scaled.csv
-Output: Optimized clustering + clean visualizations
-================================================================================
-"""
-
-import pandas as pd
+﻿import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns

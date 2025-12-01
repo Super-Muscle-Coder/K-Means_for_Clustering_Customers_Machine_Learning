@@ -1,27 +1,4 @@
-﻿"""
-================================================================================
-K-MEANS CLUSTERING - DEMOGRAPHIC SEGMENTATION (NO LIBRARY IMPLEMENTATION)
-================================================================================
-
-Module: Simplified K-Means for Demographic Customer Segmentation
-Strategy: Age, Income, Dependency_Ratio clustering with Elbow + Silhouette
-Post-hoc: Education_ord, Life_Stage for deeper customer understanding
-
-Features:
-- Custom K-Means implementation (no sklearn.cluster.KMeans)
-- Random initialization (default) + K-Means++ (optional toggle)
-- Optimal K selection via Elbow + Silhouette (2-method voting)
-- Flexible K adjustment (default K=2, adjustable based on voting)
-- PCA visualization (2D + 3D)
-- Line chart visualization for cluster characteristics
-- Minimal console output, focus on visualizations
-
-Input:  Customer_Behavior_Demographic_Robust_scaled.csv
-Output: Optimized clustering + clean visualizations
-================================================================================
-"""
-
-import pandas as pd
+﻿import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -36,43 +13,40 @@ warnings.filterwarnings('ignore')
 sns.set_style("whitegrid")
 
 
-# ================================================================================
-# CUSTOM K-MEANS IMPLEMENTATION
-# ================================================================================
 
 class CustomKMeans:
     """Self-implemented K-Means clustering algorithm."""
     
     def __init__(self, n_clusters=2, init_method='random', max_iter=300, 
                  n_init=10, tol=1e-4, random_state=42):
-        self.n_clusters = n_clusters
-        self.init_method = init_method
-        self.max_iter = max_iter
-        self.n_init = n_init
-        self.tol = tol
-        self.random_state = random_state
+        self.n_clusters = n_clusters # Số cụm K
+        self.init_method = init_method # Phương pháp khởi tạo ('random' hoặc 'kmeans++')
+        self.max_iter = max_iter # Số vòng lặp tối đa
+        self.n_init = n_init # Số lần khởi tạo khác nhau
+        self.tol = tol # Ngưỡng hội tụ
+        self.random_state = random_state 
         
-        self.cluster_centers_ = None
-        self.labels_ = None
-        self.inertia_ = None
-        self.n_iter_ = 0
+        self.cluster_centers_ = None # Tọa độ tâm cụm
+        self.labels_ = None # Nhãn cụm cho mỗi điểm dữ liệu
+        self.inertia_ = None # Tổng WCSS
+        self.n_iter_ = 0 # Số vòng lặp thực tế
         
-    def _init_centroids_random(self, X):
+    def _init_centroids_random(self, X): # Khởi tạo tâm cụm ngẫu nhiên
         """Initialize centroids randomly."""
-        np.random.seed(self.random_state)
-        random_indices = np.random.choice(X.shape[0], self.n_clusters, replace=False)
-        return X[random_indices].copy()
+        np.random.seed(self.random_state) # Đặt seed ngẫu nhiên
+        random_indices = np.random.choice(X.shape[0], self.n_clusters, replace=False) # Chọn ngẫu nhiên K điểm dữ liệu
+        return X[random_indices].copy() # Trả về tọa độ tâm cụm
     
-    def _init_centroids_kmeans_plus_plus(self, X):
+    def _init_centroids_kmeans_plus_plus(self, X): # Khởi tạo tâm cụm bằng K-Means++
         """Initialize centroids using K-Means++ algorithm."""
-        np.random.seed(self.random_state)
-        n_samples = X.shape[0]
+        np.random.seed(self.random_state) # Đặt seed ngẫu nhiên
+        n_samples = X.shape[0] # Số mẫu dữ liệu
         
-        centroids = [X[np.random.randint(n_samples)]]
+        centroids = [X[np.random.randint(n_samples)]] # Chọn ngẫu nhiên tâm cụm đầu tiên
         
-        for _ in range(1, self.n_clusters):
-            distances = np.array([
-                min([np.linalg.norm(x - c)**2 for c in centroids])
+        for _ in range(1, self.n_clusters): # Lặp để chọn các tâm cụm tiếp theo
+            distances = np.array([ 
+                min([np.linalg.norm(x - c)**2 for c in centroids]) # Khoảng cách nhỏ nhất từ điểm x đến các tâm cụm đã chọn
                 for x in X
             ])
             
@@ -89,29 +63,29 @@ class CustomKMeans:
     
     def _assign_clusters(self, X, centroids):
         """Assign each sample to nearest centroid."""
-        distances = np.zeros((X.shape[0], self.n_clusters))
+        distances = np.zeros((X.shape[0], self.n_clusters)) # Ma trận khoảng cách
         for k in range(self.n_clusters):
-            distances[:, k] = np.linalg.norm(X - centroids[k], axis=1)
-        return np.argmin(distances, axis=1)
+            distances[:, k] = np.linalg.norm(X - centroids[k], axis=1) # Tính khoảng cách từ mỗi điểm đến tâm cụm k
+        return np.argmin(distances, axis=1) # Trả về nhãn cụm cho mỗi điểm dữ liệu
     
     def _update_centroids(self, X, labels):
         """Update centroids as mean of assigned samples."""
-        centroids = np.zeros((self.n_clusters, X.shape[1]))
-        for k in range(self.n_clusters):
-            cluster_points = X[labels == k]
-            if len(cluster_points) > 0:
-                centroids[k] = cluster_points.mean(axis=0)
+        centroids = np.zeros((self.n_clusters, X.shape[1])) # Ma trận tọa độ tâm cụm mới
+        for k in range(self.n_clusters): 
+            cluster_points = X[labels == k] # Lấy các điểm thuộc cụm k
+            if len(cluster_points) > 0: 
+                centroids[k] = cluster_points.mean(axis=0) # Cập nhật tâm cụm là trung bình của các điểm trong cụm
             else:
-                centroids[k] = X[np.random.randint(X.shape[0])]
+                centroids[k] = X[np.random.randint(X.shape[0])] # Nếu cụm rỗng, chọn ngẫu nhiên một điểm dữ liệu làm tâm cụm
         return centroids
     
     def _calculate_inertia(self, X, labels, centroids):
         """Calculate within-cluster sum of squares."""
         inertia = 0
         for k in range(self.n_clusters):
-            cluster_points = X[labels == k]
-            if len(cluster_points) > 0:
-                inertia += np.sum((cluster_points - centroids[k])**2)
+            cluster_points = X[labels == k]  # Lấy các điểm thuộc cụm k
+            if len(cluster_points) > 0: # Nếu cụm không rỗng
+                inertia += np.sum((cluster_points - centroids[k])**2) # Cộng WCSS của cụm k
         return inertia
     
     def fit(self, X):
@@ -124,16 +98,16 @@ class CustomKMeans:
         
         for init_run in range(self.n_init):
             if self.init_method == 'kmeans++':
-                centroids = self._init_centroids_kmeans_plus_plus(X)
+                centroids = self._init_centroids_kmeans_plus_plus(X) # Khởi tạo tâm cụm bằng K-Means++
             else:
-                centroids = self._init_centroids_random(X)
+                centroids = self._init_centroids_random(X) # Khởi tạo tâm cụm ngẫu nhiên
             
-            for iteration in range(self.max_iter):
-                labels = self._assign_clusters(X, centroids)
-                new_centroids = self._update_centroids(X, labels)
+            for iteration in range(self.max_iter): # Lặp tối đa
+                labels = self._assign_clusters(X, centroids) # Gán nhãn cụm
+                new_centroids = self._update_centroids(X, labels) # Cập nhật tâm cụm
                 
-                centroid_shift = np.linalg.norm(new_centroids - centroids)
-                centroids = new_centroids
+                centroid_shift = np.linalg.norm(new_centroids - centroids) # Tính độ dịch chuyển của tâm cụm
+                centroids = new_centroids # Cập nhật tâm cụm
                 
                 if centroid_shift < self.tol:
                     break
@@ -160,7 +134,7 @@ class CustomKMeans:
 
 
 # ================================================================================
-# OPTIMAL K SELECTOR (ELBOW + SILHOUETTE)
+# Lựa chọn số cụm tối ưu (ELBOW + SILHOUETTE)
 # ================================================================================
 
 class OptimalKSelector:
@@ -238,22 +212,6 @@ class DemographicKMeansAnalyzer:
     
     def __init__(self, input_csv, output_graph_dir, k=2, init_kmeans_plus_plus=False, 
                  use_voting=True, random_state=42):
-        """
-        Parameters:
-        -----------
-        input_csv : str
-            Path to Robust-scaled CSV
-        output_graph_dir : str
-            Directory to save visualizations
-        k : int, default=2
-            Initial number of clusters (adjustable)
-        init_kmeans_plus_plus : bool, default=False
-            Use K-Means++ initialization (default: Random)
-        use_voting : bool, default=True
-            Use Elbow+Silhouette voting to suggest optimal K
-        random_state : int, default=42
-            Random seed
-        """
         self.input_csv = input_csv
         self.output_graph_dir = output_graph_dir
         self.k = k
